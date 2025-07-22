@@ -20,7 +20,7 @@ FREQ_1 = 392.00      # Frequency for bit '1' (G4)
 FILENAME = "poc_signal.wav" # The file used for communication
 
 # The hardcoded sequence for this PoC
-POC_SEQUENCE = [1, 0, 1, 0]
+POC_SEQUENCE = [1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0] * 8
 
 # --- Sender Logic ---
 
