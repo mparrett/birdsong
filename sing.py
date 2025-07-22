@@ -1,17 +1,18 @@
 # sendit_poc.py
 #
-# Proof of Concept: Generates and plays a hardcoded sequence of tones.
+# Proof of Concept: Generates a sequence of tones and saves them to a WAV file.
 # This script proves the "sender" half of the acoustic modem concept.
 
 import numpy as np
-import sounddevice as sd
 import time
+from scipy.io.wavfile import write as write_wav
 
 # --- Configuration based on the specification ---
 SAMPLE_RATE = 44100  # Standard CD-quality audio sample rate in Hz
 BIT_DURATION = 0.05  # Duration of each tone in seconds (50ms)
 FREQ_0 = 261.63      # Frequency for bit '0' (C4)
 FREQ_1 = 392.00      # Frequency for bit '1' (G4)
+OUTPUT_FILENAME = "poc_signal.wav" # The output file
 
 # The hardcoded sequence for this PoC, as per the spec
 POC_SEQUENCE = [1, 0, 1, 0]
@@ -47,10 +48,10 @@ def generate_tone(frequency, duration, sample_rate):
 
 def main():
     """
-    Main function to generate and play the PoC audio sequence.
+    Main function to generate the PoC audio sequence and save it to a file.
     """
-    print("--- Sender PoC ---")
-    print(f"Preparing to play hardcoded sequence: {POC_SEQUENCE}")
+    print("--- Sender PoC (File Mode) ---")
+    print(f"Preparing to generate signal for sequence: {POC_SEQUENCE}")
     print(f"Bit '0' Freq: {FREQ_0} Hz (C4), Bit '1' Freq: {FREQ_1} Hz (G4)")
     
     # Create an empty numpy array to hold the full audio signal
@@ -63,16 +64,18 @@ def main():
         print(f"Generating tone for bit '{bit}' at {frequency:.2f} Hz...")
         tone = generate_tone(frequency, BIT_DURATION, SAMPLE_RATE)
         full_signal = np.concatenate([full_signal, tone])
-        
-    print("\nPlaying audio signal...")
+            
+    print(f"\nSaving audio signal to '{OUTPUT_FILENAME}'...")
     
-    # Play the generated signal through the default audio device
-    sd.play(full_signal, SAMPLE_RATE)
+    # --- Save to WAV file ---
+    # Normalize the float32 signal to the 16-bit integer range (-32767 to 32767)
+    # This is the standard format for WAV files.
+    scaled_signal = np.int16(full_signal / np.max(np.abs(full_signal)) * 32767)
     
-    # Wait for the sound to finish playing before exiting the script
-    sd.wait()
+    # Write the scaled signal to a WAV file
+    write_wav(OUTPUT_FILENAME, SAMPLE_RATE, scaled_signal)
     
-    print("Playback complete.")
+    print("File saved successfully.")
 
 if __name__ == "__main__":
     main()
