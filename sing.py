@@ -2,6 +2,9 @@
 #
 # Proof of Concept: Generates a sequence of tones and saves them to a WAV file.
 # This version uses Python's built-in 'wave' module and has no external dependencies besides numpy.
+# Usage:
+# uv run python3 sendit_poc.py
+# afplay poc_signal.wav
 
 import numpy as np
 import time
