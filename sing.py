@@ -1,11 +1,11 @@
 # sendit_poc.py
 #
 # Proof of Concept: Generates a sequence of tones and saves them to a WAV file.
-# This script proves the "sender" half of the acoustic modem concept.
+# This version uses Python's built-in 'wave' module and has no external dependencies besides numpy.
 
 import numpy as np
 import time
-from scipy.io.wavfile import write as write_wav
+import wave # Use Python's built-in wave module
 
 # --- Configuration based on the specification ---
 SAMPLE_RATE = 44100  # Standard CD-quality audio sample rate in Hz
@@ -50,7 +50,7 @@ def main():
     """
     Main function to generate the PoC audio sequence and save it to a file.
     """
-    print("--- Sender PoC (File Mode) ---")
+    print("--- Sender PoC (File Mode, using 'wave' module) ---")
     print(f"Preparing to generate signal for sequence: {POC_SEQUENCE}")
     print(f"Bit '0' Freq: {FREQ_0} Hz (C4), Bit '1' Freq: {FREQ_1} Hz (G4)")
     
@@ -67,13 +67,16 @@ def main():
             
     print(f"\nSaving audio signal to '{OUTPUT_FILENAME}'...")
     
-    # --- Save to WAV file ---
+    # --- Save to WAV file using the built-in 'wave' module ---
     # Normalize the float32 signal to the 16-bit integer range (-32767 to 32767)
-    # This is the standard format for WAV files.
     scaled_signal = np.int16(full_signal / np.max(np.abs(full_signal)) * 32767)
     
-    # Write the scaled signal to a WAV file
-    write_wav(OUTPUT_FILENAME, SAMPLE_RATE, scaled_signal)
+    # Open the file in write-binary mode
+    with wave.open(OUTPUT_FILENAME, 'wb') as f:
+        f.setnchannels(1)  # Mono audio
+        f.setsampwidth(2)  # 2 bytes per sample (16-bit)
+        f.setframerate(SAMPLE_RATE)
+        f.writeframes(scaled_signal.tobytes()) # Write the raw bytes of the signal
     
     print("File saved successfully.")
 
