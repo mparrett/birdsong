@@ -3,8 +3,14 @@
 # Run the acoustic modem sender
 send *args:
     uv run python3 sing.py send {{args}}
+
 recv *args:
     uv run python3 sing.py recv {{args}}
+
+e2e:
+    uv run python3 sing.py send
+    afplay poc_signal.wav
+    uv run python3 sing.py recv
 
 # Alias for send
 run *args:
