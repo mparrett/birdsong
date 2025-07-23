@@ -162,7 +162,7 @@ receiver_state = {
 def process_received_bits():
     """Processes the collected bits after a transmission ends."""
     # Clear the last debug line from the screen
-    log.info(" " * CONSOLE_CLEAR_WIDTH, end="\r")
+    print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
     if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
         log.error("\nReceiver Error: No data payload found.")
         return
