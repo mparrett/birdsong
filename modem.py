@@ -120,7 +120,7 @@ def receive_data():
         print("Error: Invalid WAV data", file=sys.stderr)
         return
     
-    # CHANGED: All chunk/step sizes are now calculated in BYTES
+    # Calculate chunk and step sizes in bytes to process audio data in manageable segments.
     chunk_size_samples = int(SAMPLE_RATE * BIT_DURATION)
     chunk_size_bytes = chunk_size_samples * sample_width
 
