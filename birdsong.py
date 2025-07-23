@@ -1,21 +1,22 @@
 # birdsong.py
 #
-# MVP: Transmits data from stdin to stdout using an acoustic modem protocol.
+# Final Version: Transmits data from stdin using real-time audio.
 #
 # Sender Usage:
-#   echo "hello" | python birdsong.py send > transmission.wav
+#   echo "hello" | python birdsong.py send
 #
 # Receiver Usage:
-#   python birdsong.py recv < transmission.wav > received_message.txt
+#   python birdsong.py recv
 
 import numpy as np
-import wave
 import sys
 import time
+import sounddevice as sd
 
 # --- Protocol & Configuration ---
 SAMPLE_RATE = 44100
-BIT_DURATION = 0.008  # Your high-speed setting
+# NOTE: Increased duration for better real-world reliability over the air.
+BIT_DURATION = 0.05
 CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION)
 
 # Frequencies chosen for wide separation and performance
@@ -29,7 +30,6 @@ def bytes_to_bits(byte_data):
     """Converts a byte string into a list of bits (0s and 1s)."""
     bits = []
     for byte in byte_data:
-        # Get the 8 bits for each byte, MSB first
         for i in range(7, -1, -1):
             bits.append((byte >> i) & 1)
     return bits
@@ -40,7 +40,6 @@ def bits_to_bytes(bits):
     for i in range(0, len(bits), 8):
         byte_chunk = bits[i:i+8]
         if len(byte_chunk) < 8:
-            # Ignore trailing bits that don't form a full byte
             continue
         byte_val = 0
         for bit in byte_chunk:
@@ -68,8 +67,7 @@ def generate_tone(frequency, duration, sample_rate):
     return tone
 
 def command_send():
-    """Reads from stdin, frames the data, and writes tones to stdout."""
-    # Read raw bytes from standard input
+    """Reads from stdin, frames the data, and plays it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
         print("Sender: No input data received. Exiting.", file=sys.stderr)
@@ -77,45 +75,67 @@ def command_send():
 
     print(f"Sender: Read {len(payload_bytes)} bytes from stdin.", file=sys.stderr)
 
-    # 1. PREPARE THE FRAME
-    # Handshake: Two start bits
-    handshake_bits = [2, 2] # Using '2' to represent the START frequency
-    # Payload
+    handshake_bits = [2, 2]
     payload_bits = bytes_to_bits(payload_bytes)
-    # Checksum
     checksum_val = calculate_checksum(payload_bytes)
     checksum_bits = bytes_to_bits(bytes([checksum_val]))
     
     bits_to_transmit = handshake_bits + payload_bits + checksum_bits
     print(f"Sender: Transmitting {len(bits_to_transmit)} total tones.", file=sys.stderr)
 
-    # 2. GENERATE AUDIO
     full_signal = np.array([], dtype=np.float32)
     for bit in bits_to_transmit:
-        if bit == 0:
-            freq = FREQ_0
-        elif bit == 1:
-            freq = FREQ_1
-        else: # bit == 2
-            freq = FREQ_START
-        
+        freq = FREQ_0 if bit == 0 else (FREQ_1 if bit == 1 else FREQ_START)
         tone = generate_tone(freq, BIT_DURATION, SAMPLE_RATE)
         full_signal = np.concatenate([full_signal, tone])
     
-    # 3. WRITE TO STDOUT
-    scaled_signal = np.int16(full_signal / np.max(np.abs(full_signal)) * 32767)
-    with wave.open(sys.stdout.buffer, 'wb') as f:
-        f.setnchannels(1)
-        f.setsampwidth(2)
-        f.setframerate(SAMPLE_RATE)
-        f.writeframes(scaled_signal.tobytes())
-    print("Sender: WAV data written to stdout.", file=sys.stderr)
-
+    print("Sender: Playing audio signal...", file=sys.stderr)
+    sd.play(full_signal, SAMPLE_RATE)
+    sd.wait()
+    print("Sender: Playback complete.", file=sys.stderr)
 
 # --- Receiver Logic ---
 
+# Global state for the receiver's callback
+receiver_state = {
+    "state": "WAITING_FOR_HANDSHAKE",
+    "all_bits": [],
+    "handshake_counter": 0,
+    "silence_counter": 0,
+}
+
+def process_received_bits():
+    """Processes the collected bits after a transmission ends."""
+    # Clear the last debug line from the screen
+    print(" " * 50, end='\r', file=sys.stderr)
+    if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
+        print("\nReceiver Error: No data payload found.", file=sys.stderr)
+        return
+
+    payload_bits = receiver_state["all_bits"][:-8]
+    checksum_bits = receiver_state["all_bits"][-8:]
+
+    received_bytes = bits_to_bytes(payload_bits)
+    received_checksum = bits_to_bytes(checksum_bits)[0]
+    expected_checksum = calculate_checksum(received_bytes)
+
+    if received_checksum == expected_checksum:
+        print("\nReceiver: Checksum VALID.", file=sys.stderr)
+        sys.stdout.buffer.write(received_bytes)
+        sys.stdout.flush()
+    else:
+        print(f"\nReceiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}", file=sys.stderr)
+
+def reset_receiver():
+    """Resets the state machine to listen for a new message."""
+    receiver_state.update({
+        "state": "WAITING_FOR_HANDSHAKE", "all_bits": [], 
+        "handshake_counter": 0, "silence_counter": 0
+    })
+    print("\nReceiver: Ready for next transmission.", file=sys.stderr)
+
 def find_dominant_bit(data, sample_rate):
-    """Analyzes an audio chunk to find the dominant bit (0, 1, or START)."""
+    """Analyzes a float32 audio chunk to find the dominant bit."""
     fft_result = np.fft.rfft(data)
     fft_magnitude = np.abs(fft_result)
     fft_freqs = np.fft.rfftfreq(len(data), 1.0 / sample_rate)
@@ -128,79 +148,57 @@ def find_dominant_bit(data, sample_rate):
     mag1 = fft_magnitude[freq1_idx]
     mag_start = fft_magnitude[freq_start_idx]
     
-    AMPLITUDE_THRESHOLD = 1000 # May need tuning for real audio
+    if receiver_state["state"] == "WAITING_FOR_HANDSHAKE":
+        log_msg = f"Mags: Start={mag_start:5.2f}, F0={mag0:5.2f}, F1={mag1:5.2f}"
+        print(log_msg, end='\r', file=sys.stderr)
 
-    # Find the strongest signal among the three possibilities
-    if mag_start > AMPLITUDE_THRESHOLD and mag_start > mag1 and mag_start > mag0:
-        return 2 # START bit
-    elif mag1 > AMPLITUDE_THRESHOLD and mag1 > mag0:
-        return 1
-    elif mag0 > AMPLITUDE_THRESHOLD:
-        return 0
-    else:
-        return None
+    AMPLITUDE_THRESHOLD = 2.0
+
+    if mag_start > AMPLITUDE_THRESHOLD and mag_start > mag1 and mag_start > mag0: return 2
+    elif mag1 > AMPLITUDE_THRESHOLD and mag1 > mag0: return 1
+    elif mag0 > AMPLITUDE_THRESHOLD: return 0
+    else: return None
+
+def audio_callback(indata, frames, time, status):
+    """This function is called by sounddevice for each new audio chunk."""
+    if status: print(status, file=sys.stderr)
+    
+    bit = find_dominant_bit(indata.flatten(), SAMPLE_RATE)
+
+    if receiver_state["state"] == "WAITING_FOR_HANDSHAKE":
+        if bit == 2:
+            receiver_state["handshake_counter"] += 1
+            if receiver_state["handshake_counter"] >= 2:
+                print(" " * 50, end='\r', file=sys.stderr)
+                print("Receiver: Handshake detected. Receiving data...", end="", flush=True, file=sys.stderr)
+                receiver_state["state"] = "RECEIVING_DATA"
+        else:
+            receiver_state["handshake_counter"] = 0
+    
+    elif receiver_state["state"] == "RECEIVING_DATA":
+        # --- FIX: Only append valid data bits (0 or 1) ---
+        if bit == 0 or bit == 1:
+            print(".", end="", flush=True, file=sys.stderr)
+            receiver_state["all_bits"].append(bit)
+            receiver_state["silence_counter"] = 0
+        else:
+            # This handles both silence (bit is None) and stray START bits
+            receiver_state["silence_counter"] += 1
+            TIMEOUT_CHUNKS = 20
+            if receiver_state["silence_counter"] > TIMEOUT_CHUNKS:
+                process_received_bits()
+                reset_receiver()
 
 def command_recv():
-    """Reads WAV data from stdin, decodes the frame, and writes data to stdout."""
-    # Read all WAV data from standard input
-    with wave.open(sys.stdin.buffer, 'rb') as f:
-        if f.getframerate() != SAMPLE_RATE:
-            print(f"Receiver Error: Incorrect sample rate.", file=sys.stderr)
-            return
-        audio_data = np.frombuffer(f.readframes(f.getnframes()), dtype=np.int16)
-
-    # STATE MACHINE
-    state = "WAITING_FOR_HANDSHAKE"
-    all_bits = []
-    handshake_counter = 0
-
-    print("Receiver: Decoding...", file=sys.stderr)
-    for i in range(0, len(audio_data), CHUNK_SIZE):
-        chunk = audio_data[i:i+CHUNK_SIZE]
-        if len(chunk) < CHUNK_SIZE: continue
-
-        bit = find_dominant_bit(chunk, SAMPLE_RATE)
-        if bit is None: continue
-
-        if state == "WAITING_FOR_HANDSHAKE":
-            if bit == 2: # START bit
-                handshake_counter += 1
-                if handshake_counter == 2:
-                    print("Receiver: Handshake detected.", file=sys.stderr)
-                    state = "RECEIVING_DATA"
-            else:
-                # Reset if we see a non-start bit during handshake
-                handshake_counter = 0
-        
-        elif state == "RECEIVING_DATA":
-            # Just collect all data bits until the end
-            all_bits.append(bit)
-
-    if not all_bits or len(all_bits) < 8:
-        print("Receiver Error: No data payload found after handshake.", file=sys.stderr)
-        return
-
-    # Separate payload from checksum (last 8 bits)
-    payload_bits = all_bits[:-8]
-    checksum_bits = all_bits[-8:]
-
-    # Convert to bytes
-    received_bytes = bits_to_bytes(payload_bits)
-    received_checksum = bits_to_bytes(checksum_bits)[0]
-
-    # Verify checksum
-    expected_checksum = calculate_checksum(received_bytes)
-
-    if received_checksum == expected_checksum:
-        print("Receiver: Checksum VALID.", file=sys.stderr)
-        print(f"Receiver: Writing {len(received_bytes)} bytes to stdout.", file=sys.stderr)
-        sys.stdout.buffer.write(received_bytes)
-    else:
-        print(f"Receiver Error: Checksum mismatch!", file=sys.stderr)
-        print(f"  -> Expected: {expected_checksum}", file=sys.stderr)
-        print(f"  -> Received: {received_checksum}", file=sys.stderr)
-        sys.exit(1)
-
+    """Listens to the microphone and decodes a real-time stream."""
+    print("Receiver: Listening to microphone... Press Ctrl+C to stop.", file=sys.stderr)
+    try:
+        with sd.InputStream(samplerate=SAMPLE_RATE, blocksize=CHUNK_SIZE, channels=1, dtype='float32', callback=audio_callback):
+            while True: time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nReceiver: Stopped by user.", file=sys.stderr)
+    except Exception as e:
+        print(f"An error occurred: {e}", file=sys.stderr)
 
 # --- Main Execution Block ---
 
@@ -210,11 +208,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     command = sys.argv[1].lower()
-
-    if command == "send":
-        command_send()
-    elif command == "recv":
-        command_recv()
+    if command == "send": command_send()
+    elif command == "recv": command_recv()
     else:
         print(f"Unknown command: '{command}'", file=sys.stderr)
         sys.exit(1)
