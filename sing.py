@@ -14,11 +14,14 @@ import sys
 # --- Shared Configuration ---
 SAMPLE_RATE = 44100  # Standard CD-quality audio sample rate in Hz
 BIT_DURATION = 0.01  # Duration of each tone in seconds (50ms)
-BIT_DURATION = 0.006
+BIT_DURATION = 0.008
 CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION) # Samples per bit
 
-FREQ_0 = 261.63      # Frequency for bit '0' (C4)
-FREQ_1 = 392.00      # Frequency for bit '1' (G4)
+FREQ_0 = 196  # g3
+#FREQ_0 = 261.63      # Frequency for bit '0' (C4)
+#FREQ_1 = 392.00      # Frequency for bit '1' (G4)
+FREQ_1 = 1760.00      # A6
+
 FILENAME = "poc_signal.wav" # The file used for communication
 
 def s2m(seconds):
@@ -72,14 +75,31 @@ def command_send():
     full_signal = np.array([], dtype=np.float32)
     
     for bit in POC_SEQUENCE:
-        frequency = FREQ_1 if bit == 1 else FREQ_0
-        #print(f"Generating tone for bit '{bit}' at {frequency:.2f} Hz...")
+        frequency = FREQ_1 if bit == 1 else FREQ_0 # B4 and A4
         tone = generate_tone(frequency, BIT_DURATION, SAMPLE_RATE)
         full_signal = np.concatenate([full_signal, tone])
-            
-    print(f"\nSaving audio signal to '{FILENAME}'...")
+
+   # --- ADD NOISE ---
+    # This section demonstrates how to add white noise for testing.
+    print("Adding noise to the signal...")
+    noise_amplitude = 1.2 # Set to 0.0 for no noise, or e.g., 0.2 for more noise.
     
-    scaled_signal = np.int16(full_signal / np.max(np.abs(full_signal)) * 32767)
+    # Generate noise and ensure its data type matches the signal's (float32).
+    # This prevents subtle data type casting issues.
+    noise = (noise_amplitude * np.random.normal(0, 1, len(full_signal))).astype(np.float32)
+    
+    noisy_signal = full_signal + noise
+            
+    print(f"\nSaving noisy audio signal to '{FILENAME}'...")
+    
+    # --- IMPORTANT: Use the noisy_signal from now on ---
+    # Normalize based on the max amplitude of the *noisy* signal.
+    # Add a check to prevent division by zero if the signal is silent.
+    max_val = np.max(np.abs(noisy_signal))
+    if max_val == 0:
+        max_val = 1.0
+    
+    scaled_signal = np.int16(noisy_signal / max_val * 32767)
     
     with wave.open(FILENAME, 'wb') as f:
         f.setnchannels(1)
@@ -88,6 +108,7 @@ def command_send():
         f.writeframes(scaled_signal.tobytes())
     
     print("File saved successfully.")
+
 
 # --- Receiver Logic ---
 
