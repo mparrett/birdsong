@@ -2,19 +2,19 @@
 
 # Run the acoustic modem sender
 send *args:
-    uv run python3 birdsong.py send {{args}}
+    uv run python3 poc.py send {{args}}
 
 recv *args:
-    uv run python3 birdsong.py recv {{args}}
+    uv run python3 poc.py recv {{args}}
 
 e2e:
-    uv run python3 birdsong.py send
+    uv run python3 poc.py send
     afplay poc_signal.wav
-    uv run python3 birdsong.py recv
+    uv run python3 poc.py recv
 
 # Alias for send
 run *args:
-    uv run python3 birdsong.py send {{args}}
+    uv run python3 poc.py send {{args}}
 
 # Install dependencies (including dev dependencies)
 install:
