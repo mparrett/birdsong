@@ -77,8 +77,11 @@ def decode_data(binary_str):
             byte_str = data_bits[i:i+8]
             data_bytes.append(int(byte_str, 2))
         return data_bytes.decode('utf-8', errors='ignore')
-    except Exception as e:
-        print(f"Decoding error: {e}", file=sys.stderr)
+    except ValueError as e:
+        print(f"ValueError during decoding: {e}", file=sys.stderr)
+        return None
+    except UnicodeDecodeError as e:
+        print(f"UnicodeDecodeError during decoding: {e}", file=sys.stderr)
         return None
 
 def send_data(text):
