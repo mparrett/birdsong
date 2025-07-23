@@ -285,8 +285,8 @@ def process_wav_data(wav_source):
         if data.dtype == np.int16:
             data = data.astype(np.float32) / 32767.0
         elif data.dtype != np.float32:
-            log.info(
-                f"Receiver Warning: Unsupported WAV data type '{data.dtype}'. Trying to proceed."
+            log.error(
+                f"Receiver Error: Unsupported WAV data type '{data.dtype}'. Trying to proceed."
             )
 
         # Process the file chunk by chunk
