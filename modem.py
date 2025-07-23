@@ -104,7 +104,6 @@ def send_data(text):
     sys.stdout.buffer.write(wav_buffer.read())
     sys.stdout.buffer.flush()
 
-# FINAL CORRECTED VERSION of receive_data
 def receive_data():
     """Receive and decode audio data"""
     wav_data = sys.stdin.buffer.read()
