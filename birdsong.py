@@ -12,6 +12,8 @@ import numpy as np
 import sys
 import time
 import sounddevice as sd
+import argparse
+from scipy.io import wavfile
 
 # --- Protocol & Configuration ---
 SAMPLE_RATE = 44100
@@ -58,6 +60,8 @@ def generate_tone(frequency, duration, sample_rate):
     num_samples = int(sample_rate * duration)
     t = np.linspace(0, duration, num_samples, False)
     tone = np.sin(frequency * t * 2 * np.pi)
+    # The tone is float64. Let's convert to float32 for consistency.
+    tone = tone.astype(np.float32)
     fade_len = int(num_samples * 0.10)
     if fade_len > 0:
         fade_in = np.linspace(0, 1, fade_len)
@@ -66,8 +70,8 @@ def generate_tone(frequency, duration, sample_rate):
         tone[-fade_len:] *= fade_out
     return tone
 
-def command_send():
-    """Reads from stdin, frames the data, and plays it as audio."""
+def command_send(output_file=None):
+    """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
         print("Sender: No input data received. Exiting.", file=sys.stderr)
@@ -89,10 +93,18 @@ def command_send():
         tone = generate_tone(freq, BIT_DURATION, SAMPLE_RATE)
         full_signal = np.concatenate([full_signal, tone])
     
-    print("Sender: Playing audio signal...", file=sys.stderr)
-    sd.play(full_signal, SAMPLE_RATE)
-    sd.wait()
-    print("Sender: Playback complete.", file=sys.stderr)
+    if output_file:
+        print(f"Sender: Writing audio to {output_file}...", file=sys.stderr)
+        try:
+            wavfile.write(output_file, SAMPLE_RATE, full_signal)
+            print("Sender: File written successfully.", file=sys.stderr)
+        except Exception as e:
+            print(f"Error writing WAV file: {e}", file=sys.stderr)
+    else:
+        print("Sender: Playing audio signal...", file=sys.stderr)
+        sd.play(full_signal, SAMPLE_RATE)
+        sd.wait()
+        print("Sender: Playback complete.", file=sys.stderr)
 
 # --- Receiver Logic ---
 
@@ -189,27 +201,77 @@ def audio_callback(indata, frames, time, status):
                 process_received_bits()
                 reset_receiver()
 
-def command_recv():
-    """Listens to the microphone and decodes a real-time stream."""
-    print("Receiver: Listening to microphone... Press Ctrl+C to stop.", file=sys.stderr)
+def process_wav_data(wav_source):
+    """Reads and processes audio data from a WAV source (file path or stream)."""
     try:
-        with sd.InputStream(samplerate=SAMPLE_RATE, blocksize=CHUNK_SIZE, channels=1, dtype='float32', callback=audio_callback):
-            while True: time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nReceiver: Stopped by user.", file=sys.stderr)
+        rate, data = wavfile.read(wav_source)
+        if rate != SAMPLE_RATE:
+            print(f"Receiver Error: WAV data has sample rate {rate}, but script requires {SAMPLE_RATE}.", file=sys.stderr)
+            return
+
+        if data.dtype == np.int16:
+            data = data.astype(np.float32) / 32767.0
+        elif data.dtype != np.float32:
+            print(f"Receiver Warning: Unsupported WAV data type '{data.dtype}'. Trying to proceed.", file=sys.stderr)
+
+        # Process the file chunk by chunk
+        num_samples = len(data)
+        for i in range(0, num_samples, CHUNK_SIZE):
+            chunk = data[i:i + CHUNK_SIZE]
+            if len(chunk) < CHUNK_SIZE:
+                chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)), 'constant')
+            
+            audio_callback(chunk, len(chunk), None, None)
+
+        # After processing the file, if data is still being received, finalize it.
+        if receiver_state["state"] == "RECEIVING_DATA":
+            process_received_bits()
+            reset_receiver()
+            
+    except FileNotFoundError:
+        print(f"Receiver Error: File not found at '{wav_source}'", file=sys.stderr)
     except Exception as e:
-        print(f"An error occurred: {e}", file=sys.stderr)
+        print(f"An error occurred while processing the WAV data: {e}", file=sys.stderr)
+
+def command_recv(input_file=None):
+    """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
+    if input_file:
+        print(f"Receiver: Reading from '{input_file}'...", file=sys.stderr)
+        process_wav_data(input_file)
+    elif not sys.stdin.isatty():
+        print("Receiver: Reading from stdin pipe...", file=sys.stderr)
+        process_wav_data(sys.stdin.buffer)
+    else:
+        print("Receiver: Listening to microphone... Press Ctrl+C to stop.", file=sys.stderr)
+        try:
+            with sd.InputStream(samplerate=SAMPLE_RATE, blocksize=CHUNK_SIZE, channels=1, dtype='float32', callback=audio_callback):
+                while True: time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nReceiver: Stopped by user.", file=sys.stderr)
+        except Exception as e:
+            print(f"An error occurred: {e}", file=sys.stderr)
 
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python birdsong.py [send|recv]", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Transmit data as audio signals (birdsong).")
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Available commands")
 
-    command = sys.argv[1].lower()
-    if command == "send": command_send()
-    elif command == "recv": command_recv()
+    # --- Send Command ---
+    parser_send = subparsers.add_parser("send", help="Encode data from stdin and transmit it.")
+    parser_send.add_argument("-o", "--output", metavar="FILE", help="Write audio to a WAV file instead of playing it.")
+    
+    # --- Recv Command ---
+    parser_recv = subparsers.add_parser("recv", help="Listen for audio and decode data to stdout.")
+    parser_recv.add_argument("-i", "--input", metavar="FILE", help="Read audio from a WAV file instead of the microphone. If omitted, reads from microphone or stdin if piped.")
+
+    args = parser.parse_args()
+
+    if args.command == "send":
+        command_send(output_file=args.output)
+    elif args.command == "recv":
+        command_recv(input_file=args.input)
     else:
-        print(f"Unknown command: '{command}'", file=sys.stderr)
+        # This part should not be reachable due to `required=True`
+        print(f"Unknown command: '{args.command}'", file=sys.stderr)
         sys.exit(1)
