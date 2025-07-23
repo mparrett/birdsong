@@ -14,3 +14,5 @@ uv run python3 sing.py
 
 afplay poc_signal.wav
 
+
+https://medium.com/@arkit/processing-pcm-audio-with-sox-command-line-tool-97977ca8d3c4

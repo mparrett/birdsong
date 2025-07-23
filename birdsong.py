@@ -162,7 +162,8 @@ receiver_state = {
 def process_received_bits():
     """Processes the collected bits after a transmission ends."""
     # Clear the last debug line from the screen
-    print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
+    if sys.stdout.isatty():
+        print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
     if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
         log.error("\nReceiver Error: No data payload found.")
         return
@@ -238,8 +239,9 @@ def audio_callback(indata, frames, time, status):
         if bit == 2:
             receiver_state["handshake_counter"] += 1
             if receiver_state["handshake_counter"] >= 2:
-                sys.stdout.write(" " * CONSOLE_CLEAR_WIDTH + "\r")
-                sys.stdout.flush()
+                if sys.stdout.isatty():
+                    sys.stdout.write(" " * CONSOLE_CLEAR_WIDTH + "\r")
+                    sys.stdout.flush()
                 log.info(
                     "Receiver: Handshake detected. Receiving data...",
                     end="",
