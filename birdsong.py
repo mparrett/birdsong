@@ -238,7 +238,8 @@ def audio_callback(indata, frames, time, status):
         if bit == 2:
             receiver_state["handshake_counter"] += 1
             if receiver_state["handshake_counter"] >= 2:
-                log.info(" " * CONSOLE_CLEAR_WIDTH, end="\r")
+                sys.stdout.write(" " * CONSOLE_CLEAR_WIDTH + "\r")
+                sys.stdout.flush()
                 log.info(
                     "Receiver: Handshake detected. Receiving data...",
                     end="",
