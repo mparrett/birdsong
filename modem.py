@@ -134,7 +134,7 @@ def receive_data():
         
         if mag0 > SIGNAL_THRESHOLD or mag1 > SIGNAL_THRESHOLD:
             start_offset_bytes = i
-            print(f"Debug: Signal detected at byte offset {start_offset_bytes}", file=sys.stderr)
+            logging.debug(f"Signal detected at byte offset {start_offset_bytes}")
             break
             
     if start_offset_bytes == -1:
