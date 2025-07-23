@@ -36,7 +36,7 @@ log = _Logger()
 SAMPLE_RATE = 44100
 # NOTE: Increased duration for better real-world reliability over the air.
 BIT_DURATION = 0.05
-CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION)
+CHUNK_SIZE = None # Will be set in main after parsing args
 
 # Frequencies chosen for wide separation and performance
 FREQ_0 = 196.00  # G3
@@ -340,37 +340,75 @@ def command_recv(input_file=None):
             log.error(f"An error occurred: {e}")
 
 
+# --- Argument Parsing Helper ---
+def get_frequency(note_name):
+    """Converts a musical note name (e.g., 'A4') to its frequency in Hz."""
+    NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    
+    note_str = ''.join(filter(str.isalpha, note_name)).upper()
+    sharp_count = note_name.count('#')
+    flat_count = note_name.count('b')
+    note_str += '#' * sharp_count
+    note_str += 'b' * flat_count
+    
+    octave_str = ''.join(filter(str.isdigit, note_name))
+    if not octave_str:
+        raise ValueError("Note name must include an octave number (e.g., 'A4')")
+    octave = int(octave_str)
+    
+    try:
+        pos = NOTES.index(note_str)
+    except ValueError:
+        raise ValueError(f"Unknown note '{note_str}'")
+
+    dist = (octave - 4) * 12 + (pos - 9)
+    return 440 * (2**(1/12))**dist
+
+
+def freq_type(value):
+    """Custom argparse type that accepts a float or a musical note string (e.g., 'C4')."""
+    try:
+        return float(value)
+    except ValueError:
+        try:
+            return get_frequency(value)
+        except (ValueError, KeyError, IndexError) as e:
+            raise argparse.ArgumentTypeError(f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}")
+
+
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Transmit data as audio signals (birdsong)."
+        description="Transmit or receive data using Frequency-Shift Keying (FSK) modulation over audio.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument(
+    
+    # Parent parser for shared arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Enable verbose status messages to stderr.",
     )
-    subparsers = parser.add_subparsers(
-        dest="command", required=True, help="Available commands"
-    )
+    parent_parser.add_argument('--bit-duration', type=float, default=BIT_DURATION, help='Duration of each data bit in seconds.')
+    parent_parser.add_argument('--freq0', type=freq_type, default=FREQ_0, help='Frequency in Hz for bit "0" (or a note like "G3").')
+    parent_parser.add_argument('--freq1', type=freq_type, default=FREQ_1, help='Frequency in Hz for bit "1" (or a note like "A6").')
 
-    # --- Send Command ---
-    parser_send = subparsers.add_parser(
-        "send", help="Encode data from stdin and transmit it."
-    )
+    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+
+    # Sender command
+    parser_send = subparsers.add_parser('send', help='Transmit data from stdin.', parents=[parent_parser])
     parser_send.add_argument(
         "-o",
         "--output",
         metavar="FILE",
         help="Write audio to a WAV file. Use '-' for stdout.",
     )
-
-    # --- Recv Command ---
-    parser_recv = subparsers.add_parser(
-        "recv", help="Listen for audio and decode data to stdout."
-    )
+    
+    # Receiver command
+    parser_recv = subparsers.add_parser('recv', help='Receive data from microphone or file.', parents=[parent_parser])
     parser_recv.add_argument(
         "-i",
         "--input",
@@ -379,13 +417,23 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    log.verbose = args.verbose
 
+    # --- Update global configuration from CLI arguments ---
+    log.verbose = args.verbose
+    BIT_DURATION = args.bit_duration
+    FREQ_0 = args.freq0
+    FREQ_1 = args.freq1
+    
+    # We must declare CHUNK_SIZE as global to modify it.
+    # It's calculated here so it can use the user-provided BIT_DURATION.
+    CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION)
+
+    # --- Execute command ---
     if args.command == "send":
         command_send(output_file=args.output)
     elif args.command == "recv":
         command_recv(input_file=args.input)
     else:
-        # This part should not be reachable due to `required=True`
+        # This case is technically unreachable due to `required=True`
         log.error(f"Unknown command: '{args.command}'")
         sys.exit(1)
