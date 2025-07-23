@@ -150,7 +150,7 @@ def receive_data():
         
         binary_str += '1' if mag1 > mag0 else '0'
 
-    print(f"Debug: Raw detected binary string (first 100 chars): {binary_str[:100]}...", file=sys.stderr)
+    logging.debug(f"Raw detected binary string (first 100 chars): {binary_str[:100]}...")
 
     # 3. Decode the binary string to text
     decoded_text = decode_data(binary_str)
