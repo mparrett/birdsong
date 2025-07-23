@@ -13,30 +13,56 @@ import sys
 
 # --- Shared Configuration ---
 SAMPLE_RATE = 44100  # Standard CD-quality audio sample rate in Hz
-BIT_DURATION = 0.05  # Duration of each tone in seconds (50ms)
+BIT_DURATION = 0.01  # Duration of each tone in seconds (50ms)
+BIT_DURATION = 0.006
 CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION) # Samples per bit
+
 FREQ_0 = 261.63      # Frequency for bit '0' (C4)
 FREQ_1 = 392.00      # Frequency for bit '1' (G4)
 FILENAME = "poc_signal.wav" # The file used for communication
+
+def s2m(seconds):
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    else:
+        return f"{seconds/60:.2f} minutes"
+
+print(f"Chunk size: {CHUNK_SIZE}")
+print(f"Theoretical throughput @ {BIT_DURATION}s per bit ({BIT_DURATION*1000}ms): {1 / BIT_DURATION} bits/s (baud)")
+print(f"Time to send 140b tweet: {s2m(140*8 / (1 / BIT_DURATION))}")
+print(f"Time to send 20KB jpeg: {s2m(20000*8 / (1 / BIT_DURATION))}")
 
 # The hardcoded sequence for this PoC
 POC_SEQUENCE = [1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0] * 8
 
 # --- Sender Logic ---
 
+
 def generate_tone(frequency, duration, sample_rate):
     """Generates a pure sine wave tone."""
-    t = np.linspace(0, duration, int(sample_rate * duration), False)
+    num_samples = int(sample_rate * duration)
+    t = np.linspace(0, duration, num_samples, False)
     tone = np.sin(frequency * t * 2 * np.pi)
     
-    # Apply a simple fade-in/fade-out to prevent clicking
-    fade_len = int(sample_rate * 0.005) # 5ms fade
+    # --- FIX ---
+    # The fade length must be shorter than the tone itself to avoid errors.
+    # We'll make the fade 10% of the tone's total duration.
+    fade_len = int(num_samples * 0.10)
+    
+    # If the tone is extremely short, the fade length could be 0.
+    # In that case, we can just return the tone as-is to avoid errors.
+    if fade_len == 0:
+        return tone
+
     fade_in = np.linspace(0, 1, fade_len)
     fade_out = np.linspace(1, 0, fade_len)
     
+    # Apply the fade to the beginning and end of the tone
     tone[:fade_len] *= fade_in
     tone[-fade_len:] *= fade_out
+    
     return tone
+
 
 def command_send():
     """Generates the PoC audio sequence and saves it to a file."""
@@ -47,7 +73,7 @@ def command_send():
     
     for bit in POC_SEQUENCE:
         frequency = FREQ_1 if bit == 1 else FREQ_0
-        print(f"Generating tone for bit '{bit}' at {frequency:.2f} Hz...")
+        #print(f"Generating tone for bit '{bit}' at {frequency:.2f} Hz...")
         tone = generate_tone(frequency, BIT_DURATION, SAMPLE_RATE)
         full_signal = np.concatenate([full_signal, tone])
             
