@@ -16,6 +16,20 @@ import argparse
 from scipy.io import wavfile
 import io
 
+class _Logger:
+    def __init__(self, verbose=False):
+        self.verbose = verbose
+
+    def info(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, file=sys.stderr, **kwargs)
+
+    def error(self, *args, **kwargs):
+        # Always print errors
+        print(*args, file=sys.stderr, **kwargs)
+
+log = _Logger()
+
 # --- Protocol & Configuration ---
 SAMPLE_RATE = 44100
 # NOTE: Increased duration for better real-world reliability over the air.
@@ -75,10 +89,10 @@ def command_send(output_file=None):
     """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
-        print("Sender: No input data received. Exiting.", file=sys.stderr)
+        log.error("Sender: No input data received. Exiting.")
         return
 
-    print(f"Sender: Read {len(payload_bytes)} bytes from stdin.", file=sys.stderr)
+    log.info(f"Sender: Read {len(payload_bytes)} bytes from stdin.")
 
     handshake_bits = [2, 2]
     payload_bits = bytes_to_bits(payload_bytes)
@@ -86,7 +100,7 @@ def command_send(output_file=None):
     checksum_bits = bytes_to_bits(bytes([checksum_val]))
     
     bits_to_transmit = handshake_bits + payload_bits + checksum_bits
-    print(f"Sender: Transmitting {len(bits_to_transmit)} total tones.", file=sys.stderr)
+    log.info(f"Sender: Transmitting {len(bits_to_transmit)} total tones.")
 
     full_signal = np.concatenate([
         generate_tone(FREQ_0 if bit == 0 else (FREQ_1 if bit == 1 else FREQ_START), BIT_DURATION, SAMPLE_RATE)
@@ -95,26 +109,26 @@ def command_send(output_file=None):
     
     if output_file:
         if output_file == '-':
-            print("Sender: Writing audio to stdout...", file=sys.stderr)
+            log.info("Sender: Writing audio to stdout...")
             try:
                 # Use an in-memory buffer to create the WAV file, then write to stdout
                 buffer = io.BytesIO()
                 wavfile.write(buffer, SAMPLE_RATE, full_signal)
                 sys.stdout.buffer.write(buffer.getvalue())
             except Exception as e:
-                print(f"Error writing WAV to stdout: {e}", file=sys.stderr)
+                log.error(f"Error writing WAV to stdout: {e}")
         else:
-            print(f"Sender: Writing audio to {output_file}...", file=sys.stderr)
+            log.info(f"Sender: Writing audio to {output_file}...")
             try:
                 wavfile.write(output_file, SAMPLE_RATE, full_signal)
-                print("Sender: File written successfully.", file=sys.stderr)
+                log.info("Sender: File written successfully.")
             except Exception as e:
-                print(f"Error writing WAV file: {e}", file=sys.stderr)
+                log.error(f"Error writing WAV file: {e}")
     else:
-        print("Sender: Playing audio signal...", file=sys.stderr)
+        log.info("Sender: Playing audio signal...")
         sd.play(full_signal, SAMPLE_RATE)
         sd.wait()
-        print("Sender: Playback complete.", file=sys.stderr)
+        log.info("Sender: Playback complete.")
 
 # --- Receiver Logic ---
 
@@ -129,9 +143,9 @@ receiver_state = {
 def process_received_bits():
     """Processes the collected bits after a transmission ends."""
     # Clear the last debug line from the screen
-    print(" " * 50, end='\r', file=sys.stderr)
+    log.info(" " * 50, end='\r')
     if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
-        print("\nReceiver Error: No data payload found.", file=sys.stderr)
+        log.error("\nReceiver Error: No data payload found.")
         return
 
     payload_bits = receiver_state["all_bits"][:-8]
@@ -142,11 +156,11 @@ def process_received_bits():
     expected_checksum = calculate_checksum(received_bytes)
 
     if received_checksum == expected_checksum:
-        print("\nReceiver: Checksum VALID.", file=sys.stderr)
+        log.info("\nReceiver: Checksum VALID.")
         sys.stdout.buffer.write(received_bytes)
         sys.stdout.flush()
     else:
-        print(f"\nReceiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}", file=sys.stderr)
+        log.error(f"\nReceiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}")
 
 def reset_receiver():
     """Resets the state machine to listen for a new message."""
@@ -154,7 +168,7 @@ def reset_receiver():
         "state": "WAITING_FOR_HANDSHAKE", "all_bits": [], 
         "handshake_counter": 0, "silence_counter": 0
     })
-    print("\nReceiver: Ready for next transmission.", file=sys.stderr)
+    log.info("\nReceiver: Ready for next transmission.")
 
 def find_dominant_bit(data, sample_rate):
     """Analyzes a float32 audio chunk to find the dominant bit."""
@@ -172,7 +186,7 @@ def find_dominant_bit(data, sample_rate):
     
     if receiver_state["state"] == "WAITING_FOR_HANDSHAKE":
         log_msg = f"Mags: Start={mag_start:5.2f}, F0={mag0:5.2f}, F1={mag1:5.2f}"
-        print(log_msg, end='\r', file=sys.stderr)
+        log.info(log_msg, end='\r')
 
     AMPLITUDE_THRESHOLD = 2.0
 
@@ -183,7 +197,7 @@ def find_dominant_bit(data, sample_rate):
 
 def audio_callback(indata, frames, time, status):
     """This function is called by sounddevice for each new audio chunk."""
-    if status: print(status, file=sys.stderr)
+    if status: log.error(status)
     
     bit = find_dominant_bit(indata.flatten(), SAMPLE_RATE)
 
@@ -191,8 +205,8 @@ def audio_callback(indata, frames, time, status):
         if bit == 2:
             receiver_state["handshake_counter"] += 1
             if receiver_state["handshake_counter"] >= 2:
-                print(" " * 50, end='\r', file=sys.stderr)
-                print("Receiver: Handshake detected. Receiving data...", end="", flush=True, file=sys.stderr)
+                log.info(" " * 50, end='\r')
+                log.info("Receiver: Handshake detected. Receiving data...", end="", flush=True)
                 receiver_state["state"] = "RECEIVING_DATA"
         else:
             receiver_state["handshake_counter"] = 0
@@ -200,7 +214,7 @@ def audio_callback(indata, frames, time, status):
     elif receiver_state["state"] == "RECEIVING_DATA":
         # --- FIX: Only append valid data bits (0 or 1) ---
         if bit == 0 or bit == 1:
-            print(".", end="", flush=True, file=sys.stderr)
+            log.info(".", end="", flush=True)
             receiver_state["all_bits"].append(bit)
             receiver_state["silence_counter"] = 0
         else:
@@ -224,13 +238,13 @@ def process_wav_data(wav_source):
             rate, data = wavfile.read(wav_source)
 
         if rate != SAMPLE_RATE:
-            print(f"Receiver Error: WAV data has sample rate {rate}, but script requires {SAMPLE_RATE}.", file=sys.stderr)
+            log.error(f"Receiver Error: WAV file has sample rate {rate}, but script requires {SAMPLE_RATE}.")
             return
 
         if data.dtype == np.int16:
             data = data.astype(np.float32) / 32767.0
         elif data.dtype != np.float32:
-            print(f"Receiver Warning: Unsupported WAV data type '{data.dtype}'. Trying to proceed.", file=sys.stderr)
+            log.error(f"Receiver Warning: Unsupported WAV data type '{data.dtype}'. Trying to proceed.")
 
         # Process the file chunk by chunk
         num_samples = len(data)
@@ -247,35 +261,36 @@ def process_wav_data(wav_source):
             reset_receiver()
             
     except FileNotFoundError:
-        print(f"Receiver Error: File not found at '{wav_source}'", file=sys.stderr)
+        log.error(f"Receiver Error: File not found at '{wav_source}'")
     except Exception as e:
-        print(f"An error occurred while processing the WAV data: {e}", file=sys.stderr)
+        log.error(f"An error occurred while processing the WAV data: {e}")
 
 def command_recv(input_file=None):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
     # Handle explicit stdin ('-') or implicit pipe (no tty)
     if (input_file and input_file == '-') or (not input_file and not sys.stdin.isatty()):
-        print("Receiver: Reading from stdin pipe...", file=sys.stderr)
+        log.info("Receiver: Reading from stdin pipe...")
         process_wav_data(sys.stdin.buffer)
     # Handle a file path
     elif input_file:
-        print(f"Receiver: Reading from '{input_file}'...", file=sys.stderr)
+        log.info(f"Receiver: Reading from '{input_file}'...")
         process_wav_data(input_file)
     # Default to microphone
     else:
-        print("Receiver: Listening to microphone... Press Ctrl+C to stop.", file=sys.stderr)
+        log.info("Receiver: Listening to microphone... Press Ctrl+C to stop.")
         try:
             with sd.InputStream(samplerate=SAMPLE_RATE, blocksize=CHUNK_SIZE, channels=1, dtype='float32', callback=audio_callback):
                 while True: time.sleep(1)
         except KeyboardInterrupt:
-            print("\nReceiver: Stopped by user.", file=sys.stderr)
+            log.error("\nReceiver: Stopped by user.")
         except Exception as e:
-            print(f"An error occurred: {e}", file=sys.stderr)
+            log.error(f"An error occurred: {e}")
 
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Transmit data as audio signals (birdsong).")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose status messages to stderr.")
     subparsers = parser.add_subparsers(dest="command", required=True, help="Available commands")
 
     # --- Send Command ---
@@ -287,6 +302,7 @@ if __name__ == "__main__":
     parser_recv.add_argument("-i", "--input", metavar="FILE", help="Read audio from a WAV file. Use '-' for stdin.")
 
     args = parser.parse_args()
+    log.verbose = args.verbose
 
     if args.command == "send":
         command_send(output_file=args.output)
@@ -294,5 +310,5 @@ if __name__ == "__main__":
         command_recv(input_file=args.input)
     else:
         # This part should not be reachable due to `required=True`
-        print(f"Unknown command: '{args.command}'", file=sys.stderr)
+        log.error(f"Unknown command: '{args.command}'")
         sys.exit(1)
