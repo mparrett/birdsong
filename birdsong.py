@@ -249,7 +249,7 @@ def audio_callback(indata, frames, time, status):
             receiver_state["handshake_counter"] = 0
 
     elif receiver_state["state"] == "RECEIVING_DATA":
-        # --- FIX: Only append valid data bits (0 or 1) ---
+        # Append only valid data bits (0 or 1) to the received bits list.
         if bit == 0 or bit == 1:
             log.info(".", end="", flush=True)
             receiver_state["all_bits"].append(bit)
