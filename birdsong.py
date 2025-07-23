@@ -85,7 +85,7 @@ def generate_tone(frequency, duration, sample_rate):
     num_samples = int(sample_rate * duration)
     t = np.linspace(0, duration, num_samples, False)
     tone = np.sin(frequency * t * 2 * np.pi)
-    # The tone is float64. Let's convert to float32 for consistency.
+    # Convert the tone from float64 to float32 to ensure compatibility with audio processing libraries and reduce memory usage.
     tone = tone.astype(np.float32)
     fade_len = int(num_samples * 0.10)
     if fade_len > 0:
