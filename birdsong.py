@@ -14,6 +14,7 @@ import time
 import sounddevice as sd
 import argparse
 from scipy.io import wavfile
+import io
 
 # --- Protocol & Configuration ---
 SAMPLE_RATE = 44100
@@ -87,19 +88,28 @@ def command_send(output_file=None):
     bits_to_transmit = handshake_bits + payload_bits + checksum_bits
     print(f"Sender: Transmitting {len(bits_to_transmit)} total tones.", file=sys.stderr)
 
-    full_signal = np.array([], dtype=np.float32)
-    for bit in bits_to_transmit:
-        freq = FREQ_0 if bit == 0 else (FREQ_1 if bit == 1 else FREQ_START)
-        tone = generate_tone(freq, BIT_DURATION, SAMPLE_RATE)
-        full_signal = np.concatenate([full_signal, tone])
+    full_signal = np.concatenate([
+        generate_tone(FREQ_0 if bit == 0 else (FREQ_1 if bit == 1 else FREQ_START), BIT_DURATION, SAMPLE_RATE)
+        for bit in bits_to_transmit
+    ])
     
     if output_file:
-        print(f"Sender: Writing audio to {output_file}...", file=sys.stderr)
-        try:
-            wavfile.write(output_file, SAMPLE_RATE, full_signal)
-            print("Sender: File written successfully.", file=sys.stderr)
-        except Exception as e:
-            print(f"Error writing WAV file: {e}", file=sys.stderr)
+        if output_file == '-':
+            print("Sender: Writing audio to stdout...", file=sys.stderr)
+            try:
+                # Use an in-memory buffer to create the WAV file, then write to stdout
+                buffer = io.BytesIO()
+                wavfile.write(buffer, SAMPLE_RATE, full_signal)
+                sys.stdout.buffer.write(buffer.getvalue())
+            except Exception as e:
+                print(f"Error writing WAV to stdout: {e}", file=sys.stderr)
+        else:
+            print(f"Sender: Writing audio to {output_file}...", file=sys.stderr)
+            try:
+                wavfile.write(output_file, SAMPLE_RATE, full_signal)
+                print("Sender: File written successfully.", file=sys.stderr)
+            except Exception as e:
+                print(f"Error writing WAV file: {e}", file=sys.stderr)
     else:
         print("Sender: Playing audio signal...", file=sys.stderr)
         sd.play(full_signal, SAMPLE_RATE)
@@ -204,7 +214,15 @@ def audio_callback(indata, frames, time, status):
 def process_wav_data(wav_source):
     """Reads and processes audio data from a WAV source (file path or stream)."""
     try:
-        rate, data = wavfile.read(wav_source)
+        # If reading from a stream (like stdin), read it all into memory first
+        # as wavfile.read may need to seek.
+        if hasattr(wav_source, 'read'):
+            wav_bytes = wav_source.read()
+            wav_stream = io.BytesIO(wav_bytes)
+            rate, data = wavfile.read(wav_stream)
+        else: # It's a file path
+            rate, data = wavfile.read(wav_source)
+
         if rate != SAMPLE_RATE:
             print(f"Receiver Error: WAV data has sample rate {rate}, but script requires {SAMPLE_RATE}.", file=sys.stderr)
             return
@@ -235,12 +253,15 @@ def process_wav_data(wav_source):
 
 def command_recv(input_file=None):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
-    if input_file:
-        print(f"Receiver: Reading from '{input_file}'...", file=sys.stderr)
-        process_wav_data(input_file)
-    elif not sys.stdin.isatty():
+    # Handle explicit stdin ('-') or implicit pipe (no tty)
+    if (input_file and input_file == '-') or (not input_file and not sys.stdin.isatty()):
         print("Receiver: Reading from stdin pipe...", file=sys.stderr)
         process_wav_data(sys.stdin.buffer)
+    # Handle a file path
+    elif input_file:
+        print(f"Receiver: Reading from '{input_file}'...", file=sys.stderr)
+        process_wav_data(input_file)
+    # Default to microphone
     else:
         print("Receiver: Listening to microphone... Press Ctrl+C to stop.", file=sys.stderr)
         try:
@@ -259,11 +280,11 @@ if __name__ == "__main__":
 
     # --- Send Command ---
     parser_send = subparsers.add_parser("send", help="Encode data from stdin and transmit it.")
-    parser_send.add_argument("-o", "--output", metavar="FILE", help="Write audio to a WAV file instead of playing it.")
+    parser_send.add_argument("-o", "--output", metavar="FILE", help="Write audio to a WAV file. Use '-' for stdout.")
     
     # --- Recv Command ---
     parser_recv = subparsers.add_parser("recv", help="Listen for audio and decode data to stdout.")
-    parser_recv.add_argument("-i", "--input", metavar="FILE", help="Read audio from a WAV file instead of the microphone. If omitted, reads from microphone or stdin if piped.")
+    parser_recv.add_argument("-i", "--input", metavar="FILE", help="Read audio from a WAV file. Use '-' for stdin.")
 
     args = parser.parse_args()
 
