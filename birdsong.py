@@ -422,6 +422,7 @@ if __name__ == "__main__":
 
     # --- Update global configuration from CLI arguments ---
     log.verbose = args.verbose
+    global BIT_DURATION, FREQ_0, FREQ_1
     BIT_DURATION = args.bit_duration
     FREQ_0 = args.freq0
     FREQ_1 = args.freq1
