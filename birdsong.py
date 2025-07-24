@@ -25,6 +25,10 @@ class _Logger:
         if self.verbose:
             print(*args, file=sys.stderr, **kwargs)
 
+    def warn(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, file=sys.stderr, **kwargs)
+
     def error(self, *args, **kwargs):
         # Always print errors
         print(*args, file=sys.stderr, **kwargs)
@@ -34,17 +38,24 @@ log = _Logger()
 
 # --- Protocol & Configuration ---
 SAMPLE_RATE = 44100
+
 # NOTE: Increased duration for better real-world reliability over the air.
 BIT_DURATION = 0.05
-CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION)
+CHUNK_SIZE = None # Will be set in main after parsing args
 
 # Frequencies chosen for wide separation and performance
+# NOTE: (pun intended) We did not finish implementing the CLI args for FREQ_0 and FREQ_1 in recv
 FREQ_0 = 196.00  # G3
 FREQ_1 = 1760.00  # A6
 FREQ_START = 4186.01  # C8 (A high, distinct frequency for the handshake)
 
 # Console output constants
 CONSOLE_CLEAR_WIDTH = 50
+
+# Sine wave generation
+REFERENCE_OCTAVE = 4
+SEMITONES_PER_OCTAVE = 12
+A_NOTE_INDEX = 9
 
 # --- Helper Functions ---
 
@@ -96,7 +107,7 @@ def generate_tone(frequency, duration, sample_rate):
     return tone
 
 
-def command_send(output_file=None):
+def command_send(output_file, bit_duration, freq0, freq1):
     """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
@@ -116,8 +127,8 @@ def command_send(output_file=None):
     full_signal = np.hstack(
         [
             generate_tone(
-                FREQ_0 if bit == 0 else (FREQ_1 if bit == 1 else FREQ_START),
-                BIT_DURATION,
+                freq0 if bit == 0 else (freq1 if bit == 1 else FREQ_START),
+                bit_duration,
                 SAMPLE_RATE,
             )
             for bit in bits_to_transmit
@@ -162,7 +173,8 @@ receiver_state = {
 def process_received_bits():
     """Processes the collected bits after a transmission ends."""
     # Clear the last debug line from the screen
-    print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
+    if sys.stdout.isatty():
+        print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
     if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
         log.error("\nReceiver Error: No data payload found.")
         return
@@ -175,13 +187,17 @@ def process_received_bits():
     expected_checksum = calculate_checksum(received_bytes)
 
     if received_checksum == expected_checksum:
-        log.info("\nReceiver: Checksum VALID.")
+        green = "\033[92m"
+        reset = "\033[0m"
+        log.info(f"\n{green}Receiver: Checksum VALID.{reset}")
         sys.stdout.buffer.write(received_bytes)
         sys.stdout.flush()
     else:
         log.error(
             f"\nReceiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}"
         )
+        if log.verbose:
+            log.info(f"Received bytes (possibly corrupted): {received_bytes}")
 
 
 def reset_receiver():
@@ -215,6 +231,7 @@ def find_dominant_bit(data, sample_rate):
         log_msg = f"Mags: Start={mag_start:5.2f}, F0={mag0:5.2f}, F1={mag1:5.2f}"
         log.info(log_msg, end="\r")
 
+    # This is important for tuning
     AMPLITUDE_THRESHOLD = 2.0
 
     if mag_start > AMPLITUDE_THRESHOLD and mag_start > mag1 and mag_start > mag0:
@@ -238,11 +255,11 @@ def audio_callback(indata, frames, time, status):
         if bit == 2:
             receiver_state["handshake_counter"] += 1
             if receiver_state["handshake_counter"] >= 2:
-                sys.stdout.write(" " * CONSOLE_CLEAR_WIDTH + "\r")
-                sys.stdout.flush()
+                if sys.stdout.isatty():
+                    sys.stdout.write(" " * CONSOLE_CLEAR_WIDTH + "\r")
+                    sys.stdout.flush()
                 log.info(
                     "Receiver: Handshake detected. Receiving data...",
-                    end="",
                     flush=True,
                 )
                 receiver_state["state"] = "RECEIVING_DATA"
@@ -252,9 +269,16 @@ def audio_callback(indata, frames, time, status):
     elif receiver_state["state"] == "RECEIVING_DATA":
         # Only 0 and 1 are valid bits for the received data stream, as the system processes binary data.
         if bit == 0 or bit == 1:
-            log.info(".", end="", flush=True)
+            if log.verbose:
+                log.info("▁" if bit == 0 else "▇", end="", flush=True)
             receiver_state["all_bits"].append(bit)
             receiver_state["silence_counter"] = 0
+            n_bits = len(receiver_state["all_bits"])
+            if log.verbose:
+                if n_bits % 8 == 0:
+                    log.info(" ", end="", flush=True)
+                    if n_bits % 48 == 0:
+                        log.info("", flush=True)
         else:
             # This handles both silence (bit is None) and stray START bits
             receiver_state["silence_counter"] += 1
@@ -264,7 +288,7 @@ def audio_callback(indata, frames, time, status):
                 reset_receiver()
 
 
-def process_wav_data(wav_source):
+def process_wav_data(wav_source, chunk_size):
     """Reads and processes audio data from a WAV source (file path or stream)."""
     try:
         # If reading from a stream (like stdin), read it all into memory first
@@ -278,7 +302,7 @@ def process_wav_data(wav_source):
 
         if rate != SAMPLE_RATE:
             log.error(
-                f"Receiver Error: WAV file has sample rate {rate}, but script requires {SAMPLE_RATE}."
+                f"Fatal Receiver Error: WAV file has sample rate {rate}, but script requires {SAMPLE_RATE}."
             )
             return
 
@@ -291,10 +315,10 @@ def process_wav_data(wav_source):
 
         # Process the file chunk by chunk
         num_samples = len(data)
-        for i in range(0, num_samples, CHUNK_SIZE):
-            chunk = data[i : i + CHUNK_SIZE]
-            if len(chunk) < CHUNK_SIZE:
-                chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)), "constant")
+        for i in range(0, num_samples, chunk_size):
+            chunk = data[i : i + chunk_size]
+            if len(chunk) < chunk_size:
+                chunk = np.pad(chunk, (0, chunk_size - len(chunk)), "constant")
 
             audio_callback(chunk, len(chunk), None, None)
 
@@ -309,25 +333,25 @@ def process_wav_data(wav_source):
         log.error(f"An error occurred while processing the WAV data: {e}")
 
 
-def command_recv(input_file=None):
+def command_recv(input_file, chunk_size):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
     # Handle explicit stdin ('-') or implicit pipe (no tty)
     if (input_file and input_file == "-") or (
         not input_file and not sys.stdin.isatty()
     ):
         log.info("Receiver: Reading from stdin pipe...")
-        process_wav_data(sys.stdin.buffer)
+        process_wav_data(sys.stdin.buffer, chunk_size)
     # Handle a file path
     elif input_file:
         log.info(f"Receiver: Reading from '{input_file}'...")
-        process_wav_data(input_file)
+        process_wav_data(input_file, chunk_size)
     # Default to microphone
     else:
         log.info("Receiver: Listening to microphone... Press Ctrl+C to stop.")
         try:
             with sd.InputStream(
                 samplerate=SAMPLE_RATE,
-                blocksize=CHUNK_SIZE,
+                blocksize=chunk_size,
                 channels=1,
                 dtype="float32",
                 callback=audio_callback,
@@ -340,37 +364,75 @@ def command_recv(input_file=None):
             log.error(f"An error occurred: {e}")
 
 
+# --- Argument Parsing Helper ---
+def get_frequency(note_name):
+    """Converts a musical note name (e.g., 'A4') to its frequency in Hz."""
+    NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    
+    note_str = ''.join(filter(str.isalpha, note_name)).upper()
+    sharp_count = note_name.count('#')
+    flat_count = note_name.count('b')
+    note_str += '#' * sharp_count
+    note_str += 'b' * flat_count
+    
+    octave_str = ''.join(filter(str.isdigit, note_name))
+    if not octave_str:
+        raise ValueError("Note name must include an octave number (e.g., 'A4')")
+    octave = int(octave_str)
+    
+    try:
+        pos = NOTES.index(note_str)
+    except ValueError:
+        raise ValueError(f"Unknown note '{note_str}'")
+
+    dist = (octave - REFERENCE_OCTAVE) * SEMITONES_PER_OCTAVE + (pos - A_NOTE_INDEX)
+    return 440 * (2**(1/12))**dist
+
+
+def freq_type(value):
+    """Custom argparse type that accepts a float or a musical note string (e.g., 'C4')."""
+    try:
+        return float(value)
+    except ValueError:
+        try:
+            return get_frequency(value)
+        except (ValueError, KeyError, IndexError) as e:
+            raise argparse.ArgumentTypeError(f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}")
+
+
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Transmit data as audio signals (birdsong)."
+        description="Transmit or receive data using Frequency-Shift Keying (FSK) modulation over audio.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument(
+    
+    # Parent parser for shared arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Enable verbose status messages to stderr.",
     )
-    subparsers = parser.add_subparsers(
-        dest="command", required=True, help="Available commands"
-    )
+    parent_parser.add_argument('--bit-duration', type=float, default=0.05, help='Duration of each data bit in seconds.')
+    parent_parser.add_argument('--freq0', type=freq_type, default=196.00, help='Frequency in Hz for bit "0" (or a note like "G3").')
+    parent_parser.add_argument('--freq1', type=freq_type, default=1760.00, help='Frequency in Hz for bit "1" (or a note like "A6").')
 
-    # --- Send Command ---
-    parser_send = subparsers.add_parser(
-        "send", help="Encode data from stdin and transmit it."
-    )
+    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+
+    # Sender command
+    parser_send = subparsers.add_parser('send', help='Transmit data from stdin.', parents=[parent_parser])
     parser_send.add_argument(
         "-o",
         "--output",
         metavar="FILE",
         help="Write audio to a WAV file. Use '-' for stdout.",
     )
-
-    # --- Recv Command ---
-    parser_recv = subparsers.add_parser(
-        "recv", help="Listen for audio and decode data to stdout."
-    )
+    
+    # Receiver command
+    parser_recv = subparsers.add_parser('recv', help='Receive data from microphone or file.', parents=[parent_parser])
     parser_recv.add_argument(
         "-i",
         "--input",
@@ -379,13 +441,20 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    log.verbose = args.verbose
 
+    # --- Update global configuration from CLI arguments ---
+    log.verbose = args.verbose
+    
+    # We must declare CHUNK_SIZE as global to modify it.
+    # It's calculated here so it can use the user-provided BIT_DURATION.
+    chunk_size = int(SAMPLE_RATE * args.bit_duration)
+
+    # --- Execute command ---
     if args.command == "send":
-        command_send(output_file=args.output)
+        command_send(output_file=args.output, bit_duration=args.bit_duration, freq0=args.freq0, freq1=args.freq1)
     elif args.command == "recv":
-        command_recv(input_file=args.input)
+        command_recv(input_file=args.input, chunk_size=chunk_size)
     else:
-        # This part should not be reachable due to `required=True`
+        # This case is technically unreachable due to `required=True`
         log.error(f"Unknown command: '{args.command}'")
         sys.exit(1)

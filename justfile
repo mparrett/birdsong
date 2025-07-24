@@ -7,10 +7,30 @@ send *args:
 recv *args:
     uv run python3 poc.py recv {{args}}
 
-e2e:
+e2e-poc:
     uv run python3 poc.py send
     afplay poc_signal.wav
     uv run python3 poc.py recv
+
+e2e-pipes:
+   md5sum DEV_NOTES.md
+   cat DEV_NOTES.md|uv run python3 birdsong.py send -o - 2>/dev/null|uv run python3 birdsong.py recv 2>/dev/null|md5sum
+
+e2e-spectro:
+   echo "hello, great and wonderful world, what shall we do today"|uv run python3 birdsong.py send -o out.wav
+   sox out.wav -n spectrogram -d 3
+   mv spectrogram.png spectrogram_3.png
+   sox out.wav -n spectrogram -d 5
+   mv spectrogram.png spectrogram_5.png
+   sox out.wav -n spectrogram -d 10 
+   mv spectrogram.png spectrogram_10.png
+   open spectrogram_3.png
+   open spectrogram_10.png
+   cat DEV_NOTES.md|uv run python3 birdsong.py send -o out2.wav 2>/dev/null|uv
+   sox out2.wav -n stat 2>&1| grep Length
+   sox out2.wav -n spectrogram 
+   
+
 
 # Alias for send
 run *args:
