@@ -1,4 +1,4 @@
-# birdsong.py
+# fdsong.py
 #
 # Final Version: Transmits data from stdin using real-time audio.
 #
@@ -25,6 +25,10 @@ class _Logger:
         if self.verbose:
             print(*args, file=sys.stderr, **kwargs)
 
+    def warn(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, file=sys.stderr, **kwargs)
+
     def error(self, *args, **kwargs):
         # Always print errors
         print(*args, file=sys.stderr, **kwargs)
@@ -33,8 +37,7 @@ class _Logger:
 log = _Logger()
 
 # --- Protocol & Configuration ---
-#SAMPLE_RATE = 44100
-SAMPLE_RATE = 48000
+SAMPLE_RATE = 44100
 
 # NOTE: Increased duration for better real-world reliability over the air.
 BIT_DURATION = 0.05
@@ -47,6 +50,11 @@ FREQ_START = 4186.01  # C8 (A high, distinct frequency for the handshake)
 
 # Console output constants
 CONSOLE_CLEAR_WIDTH = 50
+
+# Sine wave generation
+REFERENCE_OCTAVE = 4
+SEMITONES_PER_OCTAVE = 12
+A_NOTE_INDEX = 9
 
 # --- Helper Functions ---
 
@@ -98,7 +106,7 @@ def generate_tone(frequency, duration, sample_rate):
     return tone
 
 
-def command_send(output_file=None):
+def command_send(output_file, bit_duration, freq0, freq1):
     """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
@@ -118,8 +126,8 @@ def command_send(output_file=None):
     full_signal = np.hstack(
         [
             generate_tone(
-                FREQ_0 if bit == 0 else (FREQ_1 if bit == 1 else FREQ_START),
-                BIT_DURATION,
+                freq0 if bit == 0 else (freq1 if bit == 1 else FREQ_START),
+                bit_duration,
                 SAMPLE_RATE,
             )
             for bit in bits_to_transmit
@@ -178,13 +186,17 @@ def process_received_bits():
     expected_checksum = calculate_checksum(received_bytes)
 
     if received_checksum == expected_checksum:
-        log.info("\nReceiver: Checksum VALID.")
+        bright_green = "\033[92m"
+        reset = "\033[0m"
+        log.info(f"\n{bright_green}Receiver: Checksum VALID.{reset}")
         sys.stdout.buffer.write(received_bytes)
         sys.stdout.flush()
     else:
         log.error(
             f"\nReceiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}"
         )
+        if log.verbose:
+            log.info(f"Received bytes (possibly corrupted): {received_bytes}")
 
 
 def reset_receiver():
@@ -246,7 +258,6 @@ def audio_callback(indata, frames, time, status):
                     sys.stdout.flush()
                 log.info(
                     "Receiver: Handshake detected. Receiving data...",
-                    end="",
                     flush=True,
                 )
                 receiver_state["state"] = "RECEIVING_DATA"
@@ -256,9 +267,16 @@ def audio_callback(indata, frames, time, status):
     elif receiver_state["state"] == "RECEIVING_DATA":
         # Only 0 and 1 are valid bits for the received data stream, as the system processes binary data.
         if bit == 0 or bit == 1:
-            log.info(".", end="", flush=True)
+            if log.verbose:
+                log.info("▁" if bit == 0 else "▇", end="", flush=True)
             receiver_state["all_bits"].append(bit)
             receiver_state["silence_counter"] = 0
+            n_bits = len(receiver_state["all_bits"])
+            if log.verbose:
+                if n_bits % 8 == 0:
+                    log.info(" ", end="", flush=True)
+                    if n_bits % 48 == 0:
+                        log.info("", flush=True)
         else:
             # This handles both silence (bit is None) and stray START bits
             receiver_state["silence_counter"] += 1
@@ -268,7 +286,7 @@ def audio_callback(indata, frames, time, status):
                 reset_receiver()
 
 
-def process_wav_data(wav_source):
+def process_wav_data(wav_source, chunk_size):
     """Reads and processes audio data from a WAV source (file path or stream)."""
     try:
         # If reading from a stream (like stdin), read it all into memory first
@@ -282,7 +300,7 @@ def process_wav_data(wav_source):
 
         if rate != SAMPLE_RATE:
             log.error(
-                f"Receiver Error: WAV file has sample rate {rate}, but script requires {SAMPLE_RATE}."
+                f"Fatal Receiver Error: WAV file has sample rate {rate}, but script requires {SAMPLE_RATE}."
             )
             return
 
@@ -295,10 +313,10 @@ def process_wav_data(wav_source):
 
         # Process the file chunk by chunk
         num_samples = len(data)
-        for i in range(0, num_samples, CHUNK_SIZE):
-            chunk = data[i : i + CHUNK_SIZE]
-            if len(chunk) < CHUNK_SIZE:
-                chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)), "constant")
+        for i in range(0, num_samples, chunk_size):
+            chunk = data[i : i + chunk_size]
+            if len(chunk) < chunk_size:
+                chunk = np.pad(chunk, (0, chunk_size - len(chunk)), "constant")
 
             audio_callback(chunk, len(chunk), None, None)
 
@@ -313,25 +331,25 @@ def process_wav_data(wav_source):
         log.error(f"An error occurred while processing the WAV data: {e}")
 
 
-def command_recv(input_file=None):
+def command_recv(input_file, chunk_size):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
     # Handle explicit stdin ('-') or implicit pipe (no tty)
     if (input_file and input_file == "-") or (
         not input_file and not sys.stdin.isatty()
     ):
         log.info("Receiver: Reading from stdin pipe...")
-        process_wav_data(sys.stdin.buffer)
+        process_wav_data(sys.stdin.buffer, chunk_size)
     # Handle a file path
     elif input_file:
         log.info(f"Receiver: Reading from '{input_file}'...")
-        process_wav_data(input_file)
+        process_wav_data(input_file, chunk_size)
     # Default to microphone
     else:
         log.info("Receiver: Listening to microphone... Press Ctrl+C to stop.")
         try:
             with sd.InputStream(
                 samplerate=SAMPLE_RATE,
-                blocksize=CHUNK_SIZE,
+                blocksize=chunk_size,
                 channels=1,
                 dtype="float32",
                 callback=audio_callback,
@@ -396,9 +414,9 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable verbose status messages to stderr.",
     )
-    parent_parser.add_argument('--bit-duration', type=float, default=BIT_DURATION, help='Duration of each data bit in seconds.')
-    parent_parser.add_argument('--freq0', type=freq_type, default=FREQ_0, help='Frequency in Hz for bit "0" (or a note like "G3").')
-    parent_parser.add_argument('--freq1', type=freq_type, default=FREQ_1, help='Frequency in Hz for bit "1" (or a note like "A6").')
+    parent_parser.add_argument('--bit-duration', type=float, default=0.05, help='Duration of each data bit in seconds.')
+    parent_parser.add_argument('--freq0', type=freq_type, default=196.00, help='Frequency in Hz for bit "0" (or a note like "G3").')
+    parent_parser.add_argument('--freq1', type=freq_type, default=1760.00, help='Frequency in Hz for bit "1" (or a note like "A6").')
 
     subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
 
@@ -424,20 +442,16 @@ if __name__ == "__main__":
 
     # --- Update global configuration from CLI arguments ---
     log.verbose = args.verbose
-    global BIT_DURATION, FREQ_0, FREQ_1
-    BIT_DURATION = args.bit_duration
-    FREQ_0 = args.freq0
-    FREQ_1 = args.freq1
     
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.
-    CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION)
+    chunk_size = int(SAMPLE_RATE * args.bit_duration)
 
     # --- Execute command ---
     if args.command == "send":
-        command_send(output_file=args.output)
+        command_send(output_file=args.output, bit_duration=args.bit_duration, freq0=args.freq0, freq1=args.freq1)
     elif args.command == "recv":
-        command_recv(input_file=args.input)
+        command_recv(input_file=args.input, chunk_size=chunk_size)
     else:
         # This case is technically unreachable due to `required=True`
         log.error(f"Unknown command: '{args.command}'")
