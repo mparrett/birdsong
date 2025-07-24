@@ -363,7 +363,7 @@ def get_frequency(note_name):
     except ValueError:
         raise ValueError(f"Unknown note '{note_str}'")
 
-    dist = (octave - 4) * 12 + (pos - 9)
+    dist = (octave - REFERENCE_OCTAVE) * SEMITONES_PER_OCTAVE + (pos - A_NOTE_INDEX)
     return 440 * (2**(1/12))**dist
 
 
