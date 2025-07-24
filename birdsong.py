@@ -33,7 +33,9 @@ class _Logger:
 log = _Logger()
 
 # --- Protocol & Configuration ---
-SAMPLE_RATE = 44100
+#SAMPLE_RATE = 44100
+SAMPLE_RATE = 48000
+
 # NOTE: Increased duration for better real-world reliability over the air.
 BIT_DURATION = 0.05
 CHUNK_SIZE = None # Will be set in main after parsing args
