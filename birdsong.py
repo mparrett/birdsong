@@ -230,6 +230,7 @@ def find_dominant_bit(data, sample_rate):
         log_msg = f"Mags: Start={mag_start:5.2f}, F0={mag0:5.2f}, F1={mag1:5.2f}"
         log.info(log_msg, end="\r")
 
+    # This is important for tuning
     AMPLITUDE_THRESHOLD = 2.0
 
     if mag_start > AMPLITUDE_THRESHOLD and mag_start > mag1 and mag_start > mag0:
