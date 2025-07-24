@@ -186,9 +186,9 @@ def process_received_bits():
     expected_checksum = calculate_checksum(received_bytes)
 
     if received_checksum == expected_checksum:
-        bright_green = "\033[92m"
+        green = "\033[92m"
         reset = "\033[0m"
-        log.info(f"\n{bright_green}Receiver: Checksum VALID.{reset}")
+        log.info(f"\n{green}Receiver: Checksum VALID.{reset}")
         sys.stdout.buffer.write(received_bytes)
         sys.stdout.flush()
     else:
