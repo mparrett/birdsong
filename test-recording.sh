@@ -31,7 +31,7 @@ sox captured.resampled.wav -n spectrogram -o spectro_captured.png
 
 # Generate to wav file
 echo $MSG | uv run python3 birdsong.py send -o sent.wav
-sox sent.wav -n stats
+sox sent.wav -n stats 2>&1 | grep 'Length '
 sox sent.wav -n spectrogram -o spectro_sent.png
 
 echo "Spectrograms created: spectro_captured.png, specro_sent.png"
@@ -44,9 +44,11 @@ uv run python3 birdsong.py recv --verbose < captured.resampled.wav
 # nf=-30 use noise floor (level) as -30dB (tune this for better results)
 # tn=1 noise level will be tracked and gradually changed during processing
 
-ffmpeg -i captured.resampled.wav -af "afftdn=nr=10:nf=-30:tn=1" captured.resampled.filtered.wav
+ffmpeg -i captured.resampled.wav \
+	-hide_banner -loglevel error -y \
+	-af "afftdn=nr=10:nf=-30:tn=1" captured.resampled.filtered.wav
 
 uv run python3 birdsong.py recv --verbose < captured.resampled.filtered.wav
 
-sox captured.resampled.filtered.wav -n stats
+sox captured.resampled.filtered.wav -n stats 2>&1 | grep 'Length '
 sox captured.resampled.filtered.wav -n spectrogram -o spectro_captured_filtered.png
