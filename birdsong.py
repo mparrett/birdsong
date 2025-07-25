@@ -107,7 +107,7 @@ def generate_tone(frequency, duration, sample_rate):
     return tone
 
 
-def command_send(output_file, bit_duration, freq0, freq1):
+def command_send(output_file, bit_duration, freq0, freq1, freq_start):
     """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
@@ -127,7 +127,7 @@ def command_send(output_file, bit_duration, freq0, freq1):
     full_signal = np.hstack(
         [
             generate_tone(
-                freq0 if bit == 0 else (freq1 if bit == 1 else FREQ_START),
+                freq0 if bit == 0 else (freq1 if bit == 1 else freq_start),
                 bit_duration,
                 SAMPLE_RATE,
             )
@@ -403,6 +403,7 @@ def freq_type(value):
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
+    
     parser = argparse.ArgumentParser(
         description="Transmit or receive data using Frequency-Shift Keying (FSK) modulation over audio.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -419,6 +420,7 @@ if __name__ == "__main__":
     parent_parser.add_argument('--bit-duration', type=float, default=0.05, help='Duration of each data bit in seconds.')
     parent_parser.add_argument('--freq0', type=freq_type, default=196.00, help='Frequency in Hz for bit "0" (or a note like "G3").')
     parent_parser.add_argument('--freq1', type=freq_type, default=1760.00, help='Frequency in Hz for bit "1" (or a note like "A6").')
+    parent_parser.add_argument('--freq-start', type=freq_type, default=4186.01, help='Frequency in Hz for handshake signal (or a note like "C8"). Lower frequencies are less disturbing to pets.')
 
     subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
 
@@ -445,13 +447,16 @@ if __name__ == "__main__":
     # --- Update global configuration from CLI arguments ---
     log.verbose = args.verbose
     
+    # Use CLI frequency arguments
+    
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.
     chunk_size = int(SAMPLE_RATE * args.bit_duration)
 
     # --- Execute command ---
     if args.command == "send":
-        command_send(output_file=args.output, bit_duration=args.bit_duration, freq0=args.freq0, freq1=args.freq1)
+        freq_start = getattr(args, 'freq_start', FREQ_START)
+        command_send(output_file=args.output, bit_duration=args.bit_duration, freq0=args.freq0, freq1=args.freq1, freq_start=freq_start)
     elif args.command == "recv":
         command_recv(input_file=args.input, chunk_size=chunk_size)
     else:
