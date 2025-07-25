@@ -129,3 +129,6 @@ The codebase contains three main implementations with different architectural ap
 - Framing logic in `modem.py` for stdin/stdout compatibility
 - Error detection mechanisms vary by implementation
 - Maintain backward compatibility when possible
+
+## Development Notes
+- Use `uv run python` to run python scripts
