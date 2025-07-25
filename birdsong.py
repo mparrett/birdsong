@@ -15,6 +15,7 @@ import sounddevice as sd
 import argparse
 from scipy.io import wavfile
 import io
+from dataclasses import dataclass
 
 
 class _Logger:
@@ -36,6 +37,15 @@ class _Logger:
 
 log = _Logger()
 
+
+@dataclass
+class FrequencyConfig:
+    """Configuration for FSK frequencies."""
+    freq0: float = 196.00  # G3 - frequency for bit '0'
+    freq1: float = 1760.00  # A6 - frequency for bit '1'
+    freq_start: float = 4186.01  # C8 - handshake frequency
+
+
 # --- Protocol & Configuration ---
 SAMPLE_RATE = 44100
 
@@ -43,11 +53,8 @@ SAMPLE_RATE = 44100
 BIT_DURATION = 0.05
 CHUNK_SIZE = None # Will be set in main after parsing args
 
-# Frequencies chosen for wide separation and performance
-# NOTE: (pun intended) We did not finish implementing the CLI args for FREQ_0 and FREQ_1 in recv
-FREQ_0 = 196.00  # G3
-FREQ_1 = 1760.00  # A6
-FREQ_START = 4186.01  # C8 (A high, distinct frequency for the handshake)
+# Default frequency configuration
+_default_freq_config = FrequencyConfig()
 
 # Console output constants
 CONSOLE_CLEAR_WIDTH = 50
@@ -107,7 +114,7 @@ def generate_tone(frequency, duration, sample_rate):
     return tone
 
 
-def command_send(output_file, bit_duration, freq0, freq1, freq_start):
+def command_send(output_file, bit_duration, freq_config):
     """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
@@ -127,7 +134,7 @@ def command_send(output_file, bit_duration, freq0, freq1, freq_start):
     full_signal = np.hstack(
         [
             generate_tone(
-                freq0 if bit == 0 else (freq1 if bit == 1 else freq_start),
+                freq_config.freq0 if bit == 0 else (freq_config.freq1 if bit == 1 else freq_config.freq_start),
                 bit_duration,
                 SAMPLE_RATE,
             )
@@ -167,6 +174,7 @@ receiver_state = {
     "all_bits": [],
     "handshake_counter": 0,
     "silence_counter": 0,
+    "freq_config": None,  # Will be set when receiver starts
 }
 
 
@@ -202,26 +210,28 @@ def process_received_bits():
 
 def reset_receiver():
     """Resets the state machine to listen for a new message."""
+    freq_config = receiver_state["freq_config"]  # Preserve freq_config
     receiver_state.update(
         {
             "state": "WAITING_FOR_HANDSHAKE",
             "all_bits": [],
             "handshake_counter": 0,
             "silence_counter": 0,
+            "freq_config": freq_config,
         }
     )
     log.info("\nReceiver: Ready for next transmission.")
 
 
-def find_dominant_bit(data, sample_rate):
+def find_dominant_bit(data, sample_rate, freq_config):
     """Analyzes a float32 audio chunk to find the dominant bit."""
     fft_result = np.fft.rfft(data)
     fft_magnitude = np.abs(fft_result)
     fft_freqs = np.fft.rfftfreq(len(data), 1.0 / sample_rate)
 
-    freq0_idx = np.argmin(np.abs(fft_freqs - FREQ_0))
-    freq1_idx = np.argmin(np.abs(fft_freqs - FREQ_1))
-    freq_start_idx = np.argmin(np.abs(fft_freqs - FREQ_START))
+    freq0_idx = np.argmin(np.abs(fft_freqs - freq_config.freq0))
+    freq1_idx = np.argmin(np.abs(fft_freqs - freq_config.freq1))
+    freq_start_idx = np.argmin(np.abs(fft_freqs - freq_config.freq_start))
 
     mag0 = fft_magnitude[freq0_idx]
     mag1 = fft_magnitude[freq1_idx]
@@ -249,7 +259,9 @@ def audio_callback(indata, frames, time, status):
     if status:
         log.error(status)
 
-    bit = find_dominant_bit(indata.flatten(), SAMPLE_RATE)
+    bit = find_dominant_bit(
+        indata.flatten(), SAMPLE_RATE, receiver_state["freq_config"]
+    )
 
     if receiver_state["state"] == "WAITING_FOR_HANDSHAKE":
         if bit == 2:
@@ -333,8 +345,9 @@ def process_wav_data(wav_source, chunk_size):
         log.error(f"An error occurred while processing the WAV data: {e}")
 
 
-def command_recv(input_file, chunk_size):
+def command_recv(input_file, chunk_size, freq_config):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
+    receiver_state["freq_config"] = freq_config
     # Handle explicit stdin ('-') or implicit pipe (no tty)
     if (input_file and input_file == "-") or (
         not input_file and not sys.stdin.isatty()
@@ -446,8 +459,11 @@ if __name__ == "__main__":
 
     # --- Update global configuration from CLI arguments ---
     log.verbose = args.verbose
-    
-    # Use CLI frequency arguments
+
+    # Create frequency configuration from CLI arguments
+    freq_config = FrequencyConfig(
+        freq0=args.freq0, freq1=args.freq1, freq_start=getattr(args, 'freq_start')
+    )
     
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.
@@ -455,10 +471,15 @@ if __name__ == "__main__":
 
     # --- Execute command ---
     if args.command == "send":
-        freq_start = getattr(args, 'freq_start', FREQ_START)
-        command_send(output_file=args.output, bit_duration=args.bit_duration, freq0=args.freq0, freq1=args.freq1, freq_start=freq_start)
+        command_send(
+            output_file=args.output,
+            bit_duration=args.bit_duration,
+            freq_config=freq_config,
+        )
     elif args.command == "recv":
-        command_recv(input_file=args.input, chunk_size=chunk_size)
+        command_recv(
+            input_file=args.input, chunk_size=chunk_size, freq_config=freq_config
+        )
     else:
         # This case is technically unreachable due to `required=True`
         log.error(f"Unknown command: '{args.command}'")
