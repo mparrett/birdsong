@@ -55,6 +55,7 @@ check:
 # Clean generated files
 clean:
     rm -f *.wav
+    find . -name '*.pyc' -delete
 
 # Show help
 help:
