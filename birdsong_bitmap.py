@@ -46,14 +46,14 @@ class BitmapConfig:
     def __post_init__(self):
         if self.frequencies is None:
             self.frequencies = [
-                196.0,   # G3 - Bass foundation
-                261.6,   # C4 - Perfect fourth above G3
-                392.0,   # G4 - Octave
-                523.3,   # C5 - Perfect fourth above G4
                 784.0,   # G5 - Octave  
                 1046.5,  # C6 - Perfect fourth above G5
                 1568.0,  # G6 - Octave
-                2093.0   # C7 - Perfect fourth above G6
+                2093.0,  # C7 - Perfect fourth above G6
+                2637.0,  # G7 - Octave (extrapolated)
+                3520.0,  # C8 - Perfect fourth above G7 (extrapolated)
+                4186.0,  # C8 (actual piano note)
+                5274.0   # C9 - One octave above C8
             ]
     
     @property
@@ -70,6 +70,94 @@ class BitmapConfig:
     def total_bits(self):
         """Total bit capacity of the grid."""
         return self.freq_bands * self.time_slots
+
+
+def text_to_bitmap(text, config):
+    """
+    Convert text string to bitmap representation.
+    
+    Args:
+        text: String to encode
+        config: BitmapConfig instance
+        
+    Returns:
+        2D numpy array [freq_bands, time_slots] of 0s and 1s
+        
+    Raises:
+        ValueError: If text is too long for current grid size
+    """
+    # Convert text to UTF-8 bytes, then to bit array
+    text_bytes = text.encode('utf-8')
+    bit_list = []
+    
+    for byte in text_bytes:
+        # Convert each byte to 8 bits (MSB first)
+        for i in range(8):
+            bit_list.append((byte >> (7 - i)) & 1)
+    
+    # Check if text fits in our grid
+    total_bits = config.total_bits
+    if len(bit_list) > total_bits:
+        raise ValueError(f"Text too long: {len(bit_list)} bits needed, {total_bits} available")
+    
+    # Pad with zeros if needed
+    while len(bit_list) < total_bits:
+        bit_list.append(0)
+    
+    # Convert bit list to 2D bitmap
+    bitmap = np.zeros((config.freq_bands, config.time_slots), dtype=int)
+    bit_idx = 0
+    
+    # Fill bitmap row by row (frequency by frequency)
+    for f in range(config.freq_bands):
+        for t in range(config.time_slots):
+            if bit_idx < len(bit_list):
+                bitmap[f, t] = bit_list[bit_idx]
+                bit_idx += 1
+    
+    return bitmap
+
+
+def bitmap_to_text(bitmap, config):
+    """
+    Convert bitmap back to text string.
+    
+    Args:
+        bitmap: 2D numpy array [freq_bands, time_slots] of 0s and 1s
+        config: BitmapConfig instance
+        
+    Returns:
+        Decoded text string
+    """
+    # Extract bits from bitmap (row by row)
+    bit_list = []
+    for f in range(config.freq_bands):
+        for t in range(config.time_slots):
+            bit_list.append(int(bitmap[f, t]))
+    
+    # Convert bits to bytes
+    text_bytes = []
+    for i in range(0, len(bit_list), 8):
+        if i + 7 < len(bit_list):
+            # Reconstruct byte from 8 bits (MSB first)
+            byte_value = 0
+            for j in range(8):
+                byte_value |= (bit_list[i + j] << (7 - j))
+            
+            # Stop at null terminator or non-printable characters at end
+            if byte_value == 0:
+                break
+            text_bytes.append(byte_value)
+    
+    # Convert bytes to UTF-8 string, handle decode errors gracefully
+    try:
+        # Remove trailing null bytes and decode
+        while text_bytes and text_bytes[-1] == 0:
+            text_bytes.pop()
+        return bytes(text_bytes).decode('utf-8')
+    except UnicodeDecodeError:
+        # Return raw bytes representation if UTF-8 decode fails
+        return f"<DECODE_ERROR: {text_bytes}>"
 
 
 def create_test_patterns():
@@ -263,9 +351,9 @@ def audio_to_bitmap(audio, config):
             
             freq_thresholds[f] = max(global_threshold, freq_threshold)
             
-            # Additional boost for low frequencies to combat harmonic interference
-            if f < 3:  # First three frequency bands (196Hz, 261Hz, 392Hz) most affected by harmonics
-                freq_thresholds[f] *= 1.05  # Require 5% more energy to trigger (more conservative)
+            # Higher frequencies have less harmonic interference
+            # Apply minimal conservative boost for text reliability
+            freq_thresholds[f] *= 1.1  # Require 10% more energy for all frequencies
     else:
         # Fallback to fixed thresholds if no energy data
         freq_thresholds = np.full(config.freq_bands, 1000)
@@ -280,7 +368,7 @@ def audio_to_bitmap(audio, config):
     return bitmap
 
 
-def print_bitmap(bitmap, title="Bitmap"):
+def print_bitmap(bitmap, title="Bitmap", config=None):
     """Print a bitmap in a human-readable format."""
     print(f"\n{title} ({bitmap.shape[0]}×{bitmap.shape[1]}):")
     print("Freq\\Time", end="")
@@ -293,20 +381,34 @@ def print_bitmap(bitmap, title="Bitmap"):
         for t in range(bitmap.shape[1]):
             symbol = "██" if bitmap[f, t] == 1 else "  "
             print(symbol, end="")
-        print(f"  ({196.0 * (2 ** (f // 2)) * (1.32 if f % 2 else 1.0):.0f}Hz)")
+        if config and hasattr(config, 'frequencies') and f < len(config.frequencies):
+            print(f"  ({config.frequencies[f]:.0f}Hz)")
+        else:
+            print(f"  (freq{f})")
 
 
-def send_bitmap(pattern_name, config, output_file=None, play_audio=True):
-    """Generate and transmit a bitmap pattern."""
-    patterns = create_test_patterns()
-    
-    if pattern_name not in patterns:
-        print(f"Error: Unknown pattern '{pattern_name}'")
-        print(f"Available patterns: {list(patterns.keys())}")
-        return
-    
-    bitmap = patterns[pattern_name]
-    print_bitmap(bitmap, f"Sending Pattern: {pattern_name}")
+def send_bitmap(pattern_name=None, text=None, config=None, output_file=None, play_audio=True):
+    """Generate and transmit a bitmap pattern or text."""
+    if text is not None:
+        # Text mode
+        try:
+            bitmap = text_to_bitmap(text, config)
+            print(f"Sending Text: '{text}' ({len(text.encode('utf-8')) * 8} bits)")
+            print_bitmap(bitmap, f"Text Bitmap", config)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return
+    else:
+        # Pattern mode
+        patterns = create_test_patterns()
+        
+        if pattern_name not in patterns:
+            print(f"Error: Unknown pattern '{pattern_name}'")
+            print(f"Available patterns: {list(patterns.keys())}")
+            return
+        
+        bitmap = patterns[pattern_name]
+        print_bitmap(bitmap, f"Sending Pattern: {pattern_name}", config)
     
     # Convert bitmap to audio
     audio = bitmap_to_audio(bitmap, config)
@@ -332,8 +434,8 @@ def send_bitmap(pattern_name, config, output_file=None, play_audio=True):
         print("Transmission complete.")
 
 
-def receive_bitmap(config, input_file=None, record_duration=None):
-    """Receive and decode bitmap pattern."""
+def receive_bitmap(config, input_file=None, record_duration=None, decode_as_text=False):
+    """Receive and decode bitmap pattern or text."""
     if input_file:
         # Load from file
         sample_rate, audio = wavfile.read(input_file)
@@ -356,26 +458,34 @@ def receive_bitmap(config, input_file=None, record_duration=None):
     # Decode bitmap
     print("Decoding bitmap...")
     decoded_bitmap = audio_to_bitmap(audio, config)
-    print_bitmap(decoded_bitmap, "Received Pattern")
+    print_bitmap(decoded_bitmap, "Received Bitmap", config)
     
-    # Try to match against known patterns
-    patterns = create_test_patterns()
-    best_match = None
-    best_score = -1
-    
-    for name, pattern in patterns.items():
-        # Calculate match score (percentage of correct bits)
-        matches = np.sum(decoded_bitmap == pattern)
-        total = pattern.size
-        score = matches / total
+    if decode_as_text:
+        # Text mode - decode as text
+        decoded_text = bitmap_to_text(decoded_bitmap, config)
+        print(f"\n🎯 Decoded Text: '{decoded_text}'")
+        return decoded_text
+    else:
+        # Pattern mode - try to match against known patterns
+        patterns = create_test_patterns()
+        best_match = None
+        best_score = -1
         
-        if score > best_score:
-            best_score = score
-            best_match = name
-    
-    print(f"\nBest pattern match: {best_match} ({best_score:.1%} accuracy)")
-    if best_score < 1.0:
-        print_bitmap(patterns[best_match], f"Expected Pattern: {best_match}")
+        for name, pattern in patterns.items():
+            # Calculate match score (percentage of correct bits)
+            matches = np.sum(decoded_bitmap == pattern)
+            total = pattern.size
+            score = matches / total
+            
+            if score > best_score:
+                best_score = score
+                best_match = name
+        
+        print(f"\nBest pattern match: {best_match} ({best_score:.1%} accuracy)")
+        if best_score < 1.0:
+            print_bitmap(patterns[best_match], f"Expected Pattern: {best_match}", config)
+        
+        return best_match, best_score
 
 
 def main():
@@ -383,9 +493,14 @@ def main():
     parser.add_argument('mode', choices=['send', 'recv'], 
                        help='Send or receive bitmap data')
     
+    # Text vs Pattern mode
+    text_group = parser.add_mutually_exclusive_group()
+    text_group.add_argument('--text', '-t',
+                           help='Text to send (alternative to --pattern)')
+    text_group.add_argument('--pattern', default='checkerboard',
+                           help='Pattern to send (default: checkerboard)')
+    
     # Send mode arguments
-    parser.add_argument('--pattern', default='checkerboard',
-                       help='Pattern to send (default: checkerboard)')
     parser.add_argument('--output', '-o', 
                        help='Output WAV file for send mode')
     parser.add_argument('--no-play', action='store_true',
@@ -396,6 +511,8 @@ def main():
                        help='Input WAV file for receive mode')
     parser.add_argument('--duration', '-d', type=float,
                        help='Recording duration for receive mode')
+    parser.add_argument('--decode-text', action='store_true',
+                       help='Decode received data as text (receive mode)')
     
     # Configuration
     parser.add_argument('--time-slots', type=int, default=16,
@@ -415,11 +532,15 @@ def main():
     print(f"  Grid: {config.freq_bands}×{config.time_slots} = {config.total_bits} bits")
     print(f"  Duration: {config.total_duration:.2f}s")
     print(f"  Data rate: {config.total_bits/config.total_duration:.1f} bits/s")
+    print(f"  Max text length: ~{config.total_bits // 8} characters")
     
     if args.mode == 'send':
-        send_bitmap(args.pattern, config, args.output, not args.no_play)
+        if args.text:
+            send_bitmap(text=args.text, config=config, output_file=args.output, play_audio=not args.no_play)
+        else:
+            send_bitmap(pattern_name=args.pattern, config=config, output_file=args.output, play_audio=not args.no_play)
     else:
-        receive_bitmap(config, args.input, args.duration)
+        receive_bitmap(config, args.input, args.duration, args.decode_text)
 
 
 if __name__ == '__main__':
