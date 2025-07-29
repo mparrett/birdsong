@@ -19,7 +19,7 @@ Extended tonal encoding system with 8 symbols (3 bits each) for 3x higher data r
 - 110: Cross Rising  (784Hz → 1568Hz)   # Skip middle band
 - 111: Cross Falling (1568Hz → 784Hz)   # Skip middle band
 
-Data rate: 3 bits per symbol, 50 symbols/sec = 150 bits/s
+Data rate: 3 bits per symbol, 40 symbols/sec = 120 bits/s
 """
 
 import numpy as np
@@ -40,7 +40,7 @@ class SweepConfig8:
     top_freq: float = 2093.0     # C7
     
     # Timing
-    symbol_duration: float = 0.020   # 20ms per symbol for 150 bits/s
+    symbol_duration: float = 0.030   # 30ms per symbol for 100 bits/s
     sample_rate: int = 44100
     
     @property
@@ -163,10 +163,65 @@ def detect_symbol_8(audio_segment, config):
     """Detect which of 8 symbols based on frequency analysis."""
     from scipy import signal
     
+    segment_length = len(audio_segment)
+    
+    # For ultra-short segments, use time-domain frequency detection
+    if segment_length < 200:
+        # Split segment into start/end halves
+        mid_point = segment_length // 2
+        start_half = audio_segment[:mid_point]
+        end_half = audio_segment[mid_point:]
+        
+        def get_dominant_freq(segment):
+            if len(segment) < 32:
+                return 1000  # Default frequency
+            fft = np.fft.fft(segment)
+            freqs = np.fft.fftfreq(len(segment), 1/config.sample_rate)
+            power = np.abs(fft)
+            peak_idx = np.argmax(power[:len(power)//2])
+            return abs(freqs[peak_idx])
+        
+        start_freq = get_dominant_freq(start_half)
+        end_freq = get_dominant_freq(end_half)
+        
+        # Classify based on start/end frequency patterns
+        freqs = [config.low_freq, config.mid_freq, config.high_freq, config.top_freq]
+        
+        # Find closest frequency bands
+        start_band = np.argmin([abs(start_freq - freq) for freq in freqs])
+        end_band = np.argmin([abs(end_freq - freq) for freq in freqs])
+        
+        # Map frequency transitions to symbols
+        if start_band == 0 and end_band == 1:    # Low→Mid
+            return 0  # 000
+        elif start_band == 1 and end_band == 0:  # Mid→Low
+            return 1  # 001
+        elif start_band == 1 and end_band == 2:  # Mid→High
+            return 2  # 010
+        elif start_band == 2 and end_band == 1:  # High→Mid
+            return 3  # 011
+        elif start_band == 2 and end_band == 3:  # High→Top
+            return 4  # 100
+        elif start_band == 3 and end_band == 2:  # Top→High
+            return 5  # 101
+        elif start_band == 0 and end_band == 2:  # Low→High (cross)
+            return 6  # 110
+        elif start_band == 2 and end_band == 0:  # High→Low (cross)
+            return 7  # 111
+        else:
+            # Fallback: use direction
+            if start_freq < end_freq:
+                return 0  # Rising
+            else:
+                return 1  # Falling
+    
+    # For longer segments, use spectrogram analysis
+    nperseg = min(64, segment_length // 3)
+    noverlap = max(0, nperseg // 3)
+    
     # Compute spectrogram to find frequency trajectory
     f, t, Sxx = signal.spectrogram(audio_segment, config.sample_rate, 
-                                  nperseg=min(256, len(audio_segment)//4), 
-                                  noverlap=128)
+                                  nperseg=nperseg, noverlap=noverlap)
     
     if Sxx.shape[1] < 2:
         return 0  # Can't analyze
