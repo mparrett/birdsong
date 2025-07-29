@@ -4,21 +4,23 @@ An acoustic modem proof-of-concept that transmits data using audio signals throu
 
 ## Overview
 
-Birdsong demonstrates acoustic data transmission with two encoding modes:
+Birdsong is an acoustic modem proof-of-concept with two implementations:
 
-### **FSK Mode (Default)**: Classic binary frequency encoding
-- Bit '0': 196 Hz (G3 musical note) 
-- Bit '1': 1760 Hz (A6 musical note)
-- **Performance**: 20 bits/s
-- **Reliability**: Excellent, production-ready
+### **`birdsong.py`** - Pure FSK Implementation
+- **Purpose**: Production-ready, elegantly simple acoustic modem
+- **Encoding**: Traditional binary frequency shift keying
+- **Frequencies**: G3 (196 Hz) / A6 (1760 Hz)
+- **Performance**: 20 bits/s with 100% reliability
+- **Philosophy**: Unix simplicity, stdin/stdout piping
 
-### **Sweep Mode (New)**: Biomimetic frequency sweep encoding  
-- **4 tonal symbols**: Low/High Rising/Falling frequency sweeps
-- **Frequencies**: G-C perfect fourth harmonies (784-2093 Hz)
-- **Performance**: 100 bits/s (5x faster)
+### **`birdsong_fsk_sweeps.py`** - Hybrid Dual-Mode System
+- **Purpose**: Research showcase demonstrating biomimetic discoveries
+- **FSK Mode**: 20 bits/s (same as pure version)
+- **Sweep Mode**: 100 bits/s (5x faster) using frequency sweep encoding
+- **Features**: 4 tonal symbols, G-C perfect fourth harmonies
 - **Sound**: Natural, bird-like frequency transitions
 
-Both modes support full bidirectional communication with real-time audio I/O.
+Choose `birdsong.py` for reliability, `birdsong_fsk_sweeps.py` for performance exploration.
 
 ## Requirements
 
@@ -33,35 +35,44 @@ uv sync
 
 ## Usage
 
-### **Basic Communication**
+### **Pure FSK Mode (`birdsong.py`)**
 
 ```bash
-# FSK Mode (20 bits/s, reliable)
+# Basic transmission (20 bits/s, rock-solid reliable)
 echo "Hello World" | python birdsong.py send     # Play through speakers
 echo "Hello World" | python birdsong.py send -o message.wav  # Save to file
 
 python birdsong.py recv                          # Listen with microphone  
 python birdsong.py recv -i message.wav           # Read from file
+```
 
-# Sweep Mode (100 bits/s, 5x faster)
-echo "Hello World" | python birdsong.py send --sweep-mode
-python birdsong.py recv --sweep-mode
+### **Hybrid Dual-Mode (`birdsong_fsk_sweeps.py`)**
+
+```bash
+# FSK mode (same as pure version)
+echo "Hello World" | python birdsong_fsk_sweeps.py send
+
+# Sweep mode (100 bits/s, 5x faster, experimental)
+echo "Hello World" | python birdsong_fsk_sweeps.py send --sweep-mode
+python birdsong_fsk_sweeps.py recv --sweep-mode
 ```
 
 ### **Advanced Options**
 
 ```bash
-# Custom frequencies (musical notes or Hz)
+# Custom frequencies (musical notes or Hz) - works with both versions
 echo "Test" | python birdsong.py send --freq0 C4 --freq1 G4
+echo "Test" | python birdsong_fsk_sweeps.py send --freq0 C4 --freq1 G4
 
-# Adjust timing
-echo "Test" | python birdsong.py send --sweep-mode --symbol-duration 0.015  # 133 bits/s
+# Adjust timing (hybrid version only)
+echo "Test" | python birdsong_fsk_sweeps.py send --sweep-mode --symbol-duration 0.015  # 133 bits/s
 
-# File I/O with pipes
+# File I/O with pipes (both versions)
 echo "Data" | python birdsong.py send -o - | python birdsong.py recv -i -
 
 # Verbose mode for debugging
-python birdsong.py recv --sweep-mode -v
+python birdsong.py recv -v
+python birdsong_fsk_sweeps.py recv --sweep-mode -v
 ```
 
 ## Technical Details
@@ -96,11 +107,12 @@ python birdsong.py recv --sweep-mode -v
 - **File I/O**: WAV file generation and processing
 - **Musical Note Support**: Specify frequencies as notes (C4, G5, etc.)
 
-## Performance Comparison
+## Implementation Comparison
 
-| Mode | Encoding | Rate | "Hello World" Time | Reliability |
-|------|----------|------|-------------------|-------------|
-| FSK | Binary bits | 20 bits/s | 3.5s | 100% ✅ |
-| Sweep | Tonal symbols | 100 bits/s | 0.7s | 95% ⚠️ |
+| File | Mode | Encoding | Rate | "Hello World" Time | Reliability | Use Case |
+|------|------|----------|------|-------------------|-------------|----------|
+| `birdsong.py` | FSK | Binary bits | 20 bits/s | 3.5s | 100% ✅ | Production |
+| `birdsong_fsk_sweeps.py` | FSK | Binary bits | 20 bits/s | 3.5s | 100% ✅ | Compatibility |
+| `birdsong_fsk_sweeps.py` | Sweep | Tonal symbols | 100 bits/s | 0.7s | ~95% ⚠️ | Research |
 
-*Sweep mode accuracy is being refined - detection algorithm improvements in progress.*
+**Recommendation:** Use `birdsong.py` for reliable communication, `birdsong_fsk_sweeps.py` for exploring biomimetic performance gains.
