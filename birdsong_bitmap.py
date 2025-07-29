@@ -122,7 +122,7 @@ def create_test_patterns():
 
 def bitmap_to_audio(bitmap, config):
     """
-    Convert a 2D bitmap to audio signal.
+    Convert a 2D bitmap to audio signal with phase continuity.
     
     Args:
         bitmap: 2D numpy array [freq_bands, time_slots] of 0s and 1s
@@ -133,6 +133,9 @@ def bitmap_to_audio(bitmap, config):
     """
     total_samples = int(config.total_duration * config.sample_rate)
     audio = np.zeros(total_samples)
+    
+    # Track phase for each frequency to maintain continuity
+    phase_states = np.zeros(config.freq_bands)  # Accumulated phase for each frequency
     
     # Generate audio for each time slot
     for t in range(config.time_slots):
@@ -146,21 +149,34 @@ def bitmap_to_audio(bitmap, config):
         # Sum all active frequencies for this time slot
         slot_signal = np.zeros(slot_samples)
         active_count = 0
+        active_power = 0
         
+        # First pass: calculate total power needed for equal power distribution
         for f in range(config.freq_bands):
             if bitmap[f, t] == 1:
-                # Generate sine wave for this frequency
-                frequency = config.frequencies[f]
-                sine_wave = np.sin(2 * np.pi * frequency * time_array)
-                slot_signal += sine_wave
                 active_count += 1
+                active_power += 1  # Each frequency gets equal power
         
-        # Normalize by number of active frequencies to prevent clipping
-        if active_count > 0:
-            slot_signal = slot_signal / active_count
+        for f in range(config.freq_bands):
+            frequency = config.frequencies[f]
             
-        # Apply gentle fade in/out to prevent clicks
-        fade_samples = min(100, slot_samples // 10)  # 10% fade or 100 samples max
+            if bitmap[f, t] == 1:
+                # Generate sine wave continuing from previous phase
+                phase_offset = phase_states[f]
+                sine_wave = np.sin(2 * np.pi * frequency * time_array + phase_offset)
+                
+                # Equal power distribution: each active frequency gets 1/sqrt(active_count) amplitude
+                # This ensures total power is constant regardless of number of active frequencies
+                amplitude = 1.0 / np.sqrt(active_count) if active_count > 0 else 0
+                slot_signal += amplitude * sine_wave
+            
+            # Update phase state for this frequency (whether active or not)
+            # This maintains phase continuity even across gaps
+            phase_advance = 2 * np.pi * frequency * config.slot_duration
+            phase_states[f] = (phase_states[f] + phase_advance) % (2 * np.pi)
+        
+        # Apply gentle fade in/out to prevent clicks (smaller fade since we have phase continuity)
+        fade_samples = min(50, slot_samples // 20)  # Reduced fade since phase is continuous
         if fade_samples > 0:
             fade_in = np.linspace(0, 1, fade_samples)
             fade_out = np.linspace(1, 0, fade_samples)
@@ -174,7 +190,7 @@ def bitmap_to_audio(bitmap, config):
 
 def audio_to_bitmap(audio, config):
     """
-    Convert audio signal back to 2D bitmap by analyzing spectrogram.
+    Convert audio signal back to 2D bitmap using adaptive thresholding.
     
     Args:
         audio: numpy array of audio samples
@@ -185,7 +201,11 @@ def audio_to_bitmap(audio, config):
     """
     bitmap = np.zeros((config.freq_bands, config.time_slots), dtype=int)
     
-    # Analyze each time slot
+    # Collect energy measurements for adaptive thresholding
+    all_energies = []
+    energy_matrix = np.zeros((config.freq_bands, config.time_slots))
+    
+    # First pass: collect all energy measurements
     for t in range(config.time_slots):
         start_sample = t * config.samples_per_slot
         end_sample = start_sample + config.samples_per_slot
@@ -202,7 +222,7 @@ def audio_to_bitmap(audio, config):
             fft = np.fft.fft(windowed_segment)
             freqs = np.fft.fftfreq(len(segment), 1/config.sample_rate)
             
-            # Check energy at each target frequency
+            # Measure energy at each target frequency
             for f in range(config.freq_bands):
                 target_freq = config.frequencies[f]
                 
@@ -215,10 +235,47 @@ def audio_to_bitmap(audio, config):
                 end_idx = min(len(fft), freq_idx + bin_range + 1)
                 
                 energy = np.sum(np.abs(fft[start_idx:end_idx])**2)
-                
-                # Threshold detection (this may need tuning)
-                threshold = 1000  # Arbitrary threshold - needs calibration
-                bitmap[f, t] = 1 if energy > threshold else 0
+                energy_matrix[f, t] = energy
+                all_energies.append(energy)
+    
+    # Calculate adaptive threshold based on signal statistics
+    if len(all_energies) > 0:
+        all_energies = np.array(all_energies)
+        
+        # Global statistics for overall signal level
+        global_mean = np.mean(all_energies)
+        global_std = np.std(all_energies)
+        
+        # Estimate noise floor (use lower percentile as background noise)
+        noise_floor = np.percentile(all_energies, 25)  # Bottom 25% assumed to be noise
+        
+        # Calculate frequency-specific thresholds
+        freq_thresholds = np.zeros(config.freq_bands)
+        for f in range(config.freq_bands):
+            freq_energies = energy_matrix[f, :]
+            freq_mean = np.mean(freq_energies)
+            freq_std = np.std(freq_energies)
+            
+            # Adaptive threshold: noise floor + margin based on frequency-specific statistics
+            # Use the larger of: global threshold or frequency-specific threshold
+            global_threshold = noise_floor + 2.0 * global_std
+            freq_threshold = noise_floor + 1.5 * freq_std
+            
+            freq_thresholds[f] = max(global_threshold, freq_threshold)
+            
+            # Additional boost for low frequencies to combat harmonic interference
+            if f < 3:  # First three frequency bands (196Hz, 261Hz, 392Hz) most affected by harmonics
+                freq_thresholds[f] *= 1.05  # Require 5% more energy to trigger (more conservative)
+    else:
+        # Fallback to fixed thresholds if no energy data
+        freq_thresholds = np.full(config.freq_bands, 1000)
+    
+    # Second pass: apply adaptive thresholds
+    for t in range(config.time_slots):
+        for f in range(config.freq_bands):
+            energy = energy_matrix[f, t]
+            threshold = freq_thresholds[f]
+            bitmap[f, t] = 1 if energy > threshold else 0
     
     return bitmap
 
