@@ -7,7 +7,10 @@
       "Bash(git checkout:*)",
       "Bash(git cherry-pick:*)",
       "Bash(ls:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(python3:*)",
+      "Bash(just:*)",
+      "Bash(sox:*)"
     ],
     "deny": []
   }
