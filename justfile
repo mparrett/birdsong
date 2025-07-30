@@ -12,6 +12,17 @@ e2e-poc:
     afplay poc_signal.wav
     uv run python3 poc.py recv
 
+# Modem.py commands (stdlib-only version)
+modem-send *args:
+    uv run python3 modem.py send {{args}}
+
+modem-recv *args:
+    uv run python3 modem.py recv {{args}}
+
+e2e-modem:
+    echo "Hello, modem test!" | uv run python3 modem.py send -o modem_test.wav
+    uv run python3 modem.py recv -i modem_test.wav
+
 e2e-pipes:
    md5sum DEV_NOTES.md
    cat DEV_NOTES.md|uv run python3 birdsong.py send -o - 2>/dev/null|uv run python3 birdsong.py recv 2>/dev/null|md5sum
@@ -60,12 +71,15 @@ clean:
 # Show help
 help:
     @echo "Available commands:"
-    @echo "  just send [args] - Generate and save acoustic signal to WAV file"
-    @echo "  just recv [args] - Decode acoustic signal from WAV file"
-    @echo "  just run [args]  - Alias for 'just send'"
-    @echo "  just install     - Install dependencies (including dev)"
-    @echo "  just format      - Format code with ruff"
-    @echo "  just lint        - Lint and fix code with ruff"
-    @echo "  just check       - Check code without fixing"
-    @echo "  just clean       - Remove generated WAV files"
-    @echo "  just help        - Show this help"
+    @echo "  just send [args]     - Generate and save acoustic signal to WAV file (poc.py)"
+    @echo "  just recv [args]     - Decode acoustic signal from WAV file (poc.py)"
+    @echo "  just run [args]      - Alias for 'just send'"
+    @echo "  just modem-send [args] - Generate signal using modem.py (stdlib-only)"
+    @echo "  just modem-recv [args] - Decode signal using modem.py (stdlib-only)"
+    @echo "  just e2e-modem       - End-to-end test with modem.py"
+    @echo "  just install         - Install dependencies (including dev)"
+    @echo "  just format          - Format code with ruff"
+    @echo "  just lint            - Lint and fix code with ruff"
+    @echo "  just check           - Check code without fixing"
+    @echo "  just clean           - Remove generated WAV files"
+    @echo "  just help            - Show this help"
