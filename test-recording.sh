@@ -52,8 +52,8 @@ fi
 # --- RESAMPLING AND ANALYSIS ---
 
 # Resample captured audio to 44100 Hz to match our script's sample rate
-sox $SOX_OPTS $OUT/captured.wav -r 44100 $OUT/captured.resampled.wav
 sox $SOX_OPTS $OUT/captured.wav -n spectrogram -o $OUT/spectro_captured.png
+sox $SOX_OPTS $OUT/captured.wav -r 44100 $OUT/captured.resampled.wav
 
 # Analyze the audio files
 if [ -n "$VERBOSE" ]; then
@@ -66,6 +66,8 @@ if [ -n "$VERBOSE" ]; then
     echo "=== Decode from resampled capture ==="
 fi
 uv run python3 $BIRDSONG_PY recv $VERBOSE $BIRDSONG_OPTS < $OUT/captured.resampled.wav
+
+
 # --- NOISE REDUCTION ---
 
 # reduce noise by 10dB (tune this for better results)
