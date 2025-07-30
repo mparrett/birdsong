@@ -10,6 +10,10 @@ fi
 BIRDSONG_PY=${BIRDSONG_PY:-birdsong.py}
 BIRDSONG_OPTS=${BIRDSONG_OPTS:-""}
 OUT="test_out/$BIRDSONG_PY"  # separate for each script
+MSG="Hello world, bird style"
+
+MAGENTA=$'\033[35m'
+CLEAR=$'\033[0m'
 
 # Create output directory
 mkdir -p $OUT
@@ -34,7 +38,6 @@ if [ -n "$VERBOSE" ]; then
 fi
 
 # Generate speech audio to speaker
-MSG="Hello world"
 echo $MSG | uv run python3 $BIRDSONG_PY send $BIRDSONG_OPTS
 
 if [ -n "$VERBOSE" ]; then
@@ -76,9 +79,8 @@ ffmpeg -i $OUT/captured.resampled.wav \
 	-hide_banner -loglevel error -y \
 	-af "afftdn=nr=10:nf=-30:tn=1" $OUT/captured.resampled.filtered.wav
 
-if [ -n "$VERBOSE" ]; then
-    echo "=== Decode from filtered capture ==="
-fi
+echo "=== Decode from filtered capture ==="
+
 uv run python3 $BIRDSONG_PY recv $VERBOSE $BIRDSONG_OPTS < $OUT/captured.resampled.filtered.wav
 
 if [ -n "$VERBOSE" ]; then
@@ -87,26 +89,19 @@ if [ -n "$VERBOSE" ]; then
 fi
 sox $SOX_OPTS $OUT/captured.resampled.filtered.wav -n spectrogram -o $OUT/spectro_captured_filtered.png
 
-# --- REFERENCE GENERATION ---
+# --- REFERENCE GENERATION / VERIFICATION ---
 
-if [ -n "$VERBOSE" ]; then
-    echo "=== Generate reference WAV for comparison ==="
-fi
-echo $MSG | uv run python3 $BIRDSONG_PY send $BIRDSONG_OPTS -o $OUT/sent.wav
+echo "$MAGENTA === Generate reference WAV and decode for comparison === $CLEAR"
+echo $MSG | uv run python3 $BIRDSONG_PY send $BIRDSONG_OPTS -o $OUT/sent_ref.wav
+
+sox $SOX_OPTS $OUT/sent_ref.wav -n spectrogram -o $OUT/spectro_sent.png
+
+uv run python3 $BIRDSONG_PY recv $VERBOSE $BIRDSONG_OPTS < $OUT/sent_ref.wav
 
 if [ -n "$VERBOSE" ]; then
     echo "=== Reference Audio Stats ==="
-    sox $SOX_OPTS $OUT/sent.wav -n stats 2>&1 | grep 'Length '
+    sox $SOX_OPTS $OUT/sent_ref.wav -n stats 2>&1 | grep 'Length '
 fi
-sox $SOX_OPTS $OUT/sent.wav -n spectrogram -o $OUT/spectro_sent.png
-
-# --- DECODE REFERENCE ---
-
-if [ -n "$VERBOSE" ]; then
-    echo "=== Decode reference (should be perfect) ==="
-    echo
-fi
-uv run python3 $BIRDSONG_PY recv $VERBOSE $BIRDSONG_OPTS < $OUT/sent.wav
 
 if [ -n "$VERBOSE" ]; then
     echo
@@ -120,7 +115,7 @@ if [ -n "$VERBOSE" ]; then
     echo "  - captured.wav (original 48kHz capture)"
     echo "  - captured.resampled.wav (44.1kHz resampled)"
     echo "  - captured.resampled.filtered.wav (with noise reduction)"
-    echo "  - sent.wav (reference signal)"
+    echo "  - sent_ref.wav (reference signal)"
     echo "  - spectro_*.png (spectrograms for visual analysis)"
     echo ""
     echo "Check spectrograms to analyze signal quality and decoding performance."
