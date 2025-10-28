@@ -20,7 +20,7 @@ modem-recv *args:
     uv run python3 modem.py recv {{args}}
 
 e2e-modem:
-    echo "Hello, modem test!" | uv run python3 modem.py send -o modem_test.wav
+    uv run python3 modem.py send -m "Hello, modem test!" -o modem_test.wav
     uv run python3 modem.py recv -i modem_test.wav
 
 e2e-pipes:
