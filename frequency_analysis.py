@@ -10,7 +10,6 @@ Tools to understand what's actually happening in our frequency domain:
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.io import wavfile
 from scipy import signal
 import argparse

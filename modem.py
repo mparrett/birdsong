@@ -7,10 +7,8 @@ Adapted from our beloved birdsong.py for acoustic modem challenge.
 """
 
 import argparse
-import struct
 import wave
 import numpy as np
-import scipy.signal
 import sys
 from typing import Optional
 

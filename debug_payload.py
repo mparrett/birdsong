@@ -42,7 +42,7 @@ for i in range(8):
 print(f"Received payload+checksum bits: {received_bits}")
 print(f"Received payload+checksum bits (first 32): {received_bits[:32]}")
 
-print(f"\nBit comparison (first 32):")
+print("\nBit comparison (first 32):")
 for i in range(min(32, len(expected_bits), len(received_bits))):
     match = "✓" if expected_bits[i] == received_bits[i] else "✗"
     print(f"  Bit {i:2d}: expected {expected_bits[i]}, got {received_bits[i]} {match}")
