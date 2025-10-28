@@ -147,7 +147,7 @@ These explore different symbol alphabets, trading reliability for throughput.
 
 ### Minimal/Alternative Versions
 - **`poc.py`** - File-based proof-of-concept (196 Hz/1760 Hz, simple send/recv)
-- **`modem.py`** - Minimal stdlib-only version (no numpy/scipy dependencies)
+- **`modem.py`** - Class-based implementation (uses numpy but not scipy)
 
 ### Utilities
 - **`generate_spectrogram.py`** - Visualize WAV files as spectrograms

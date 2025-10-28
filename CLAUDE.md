@@ -19,7 +19,7 @@ just lint                       # Lint and fix code
 - **Python 3.11+** (specified in `.python-version`)
 - **UV** for package management
 - **NumPy, SciPy** for signal processing
-- **SoundDevice** for real-time audio I/O (not yet in pyproject.toml - add if needed)
+- **SoundDevice** for real-time audio I/O
 - **Matplotlib** for spectrograms
 - **Ruff** for formatting/linting (dev)
 
@@ -28,7 +28,7 @@ just lint                       # Lint and fix code
 ### Production Implementations
 - **`birdsong.py`** - Primary FSK implementation (20 bits/s, 100% reliable, real-time audio I/O)
 - **`poc.py`** - File-based proof-of-concept (196 Hz/1760 Hz, simple send/recv)
-- **`modem.py`** - Minimal stdlib-only version (no numpy/scipy)
+- **`modem.py`** - Class-based implementation (uses numpy but not scipy)
 
 ### Research Implementations
 - **`birdsong_fsk_sweeps.py`** - Hybrid dual-mode (FSK + frequency sweeps, 100 bits/s experimental)
