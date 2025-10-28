@@ -21,12 +21,10 @@ Usage:
 """
 
 import numpy as np
-import sys
 import argparse
 import sounddevice as sd
 from scipy.io import wavfile
 from dataclasses import dataclass
-import time
 
 
 @dataclass
@@ -416,7 +414,7 @@ def main():
         symbol_duration=args.symbol_duration
     )
     
-    print(f"Sweep Configuration:")
+    print("Sweep Configuration:")
     print(f"  Symbol duration: {config.symbol_duration:.3f}s")
     print(f"  Data rate: ~{2/config.symbol_duration:.1f} bits/s")
     print(f"  Low band: {config.low_freq_start:.0f}-{config.low_freq_end:.0f}Hz")

@@ -23,7 +23,6 @@ Data rate: 3 bits per symbol, 40 symbols/sec = 120 bits/s
 """
 
 import numpy as np
-import sys
 import argparse
 import sounddevice as sd
 from scipy.io import wavfile
@@ -352,7 +351,7 @@ def main():
     
     config = SweepConfig8()
     
-    print(f"8-Symbol Sweep Configuration:")
+    print("8-Symbol Sweep Configuration:")
     print(f"  Symbol duration: {config.symbol_duration:.3f}s")
     print(f"  Data rate: ~{3/config.symbol_duration:.0f} bits/s")
     print(f"  Frequency bands: {config.low_freq:.0f}-{config.mid_freq:.0f}-{config.high_freq:.0f}-{config.top_freq:.0f}Hz")

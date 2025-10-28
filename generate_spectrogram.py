@@ -9,7 +9,6 @@
 #
 # This will create 'spectrogram.png' in the same directory.
 
-import sys
 import argparse
 from scipy.io import wavfile
 from scipy import signal

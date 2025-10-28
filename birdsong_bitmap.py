@@ -21,12 +21,10 @@ Usage:
 """
 
 import numpy as np
-import sys
 import argparse
 import sounddevice as sd
 from scipy.io import wavfile
 from dataclasses import dataclass
-import time
 
 
 @dataclass
@@ -394,7 +392,7 @@ def send_bitmap(pattern_name=None, text=None, config=None, output_file=None, pla
         try:
             bitmap = text_to_bitmap(text, config)
             print(f"Sending Text: '{text}' ({len(text.encode('utf-8')) * 8} bits)")
-            print_bitmap(bitmap, f"Text Bitmap", config)
+            print_bitmap(bitmap, "Text Bitmap", config)
         except ValueError as e:
             print(f"Error: {e}")
             return
@@ -528,7 +526,7 @@ def main():
         slot_duration=args.slot_duration
     )
     
-    print(f"Bitmap Configuration:")
+    print("Bitmap Configuration:")
     print(f"  Grid: {config.freq_bands}×{config.time_slots} = {config.total_bits} bits")
     print(f"  Duration: {config.total_duration:.2f}s")
     print(f"  Data rate: {config.total_bits/config.total_duration:.1f} bits/s")
