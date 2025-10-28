@@ -116,3 +116,43 @@ python birdsong_fsk_sweeps.py recv --sweep-mode -v
 | `birdsong_fsk_sweeps.py` | Sweep | Tonal symbols | 100 bits/s | 0.7s | ~95% ⚠️ | Research |
 
 **Recommendation:** Use `birdsong.py` for reliable communication, `birdsong_fsk_sweeps.py` for exploring biomimetic performance gains.
+
+## Additional Implementations
+
+The repository includes several experimental implementations exploring advanced modulation techniques:
+
+### Frequency Sweep Variants
+- **`birdsong_sweeps.py`** - Base frequency sweep implementation
+- **`birdsong_sweeps_4sym.py`** - 4-symbol sweep variant (2 bits per symbol)
+- **`birdsong_sweeps_8sym.py`** - 8-symbol sweep variant (3 bits per symbol)
+
+These explore different symbol alphabets, trading reliability for throughput.
+
+### Multi-Band Parallel Carrier
+- **`birdsong_2band.py`** - 2 parallel frequency channels
+- **`birdsong_4band.py`** - 4 parallel frequency channels
+- **`birdsong_8band.py`** - 8 parallel frequency channels (most advanced)
+
+**Multi-band approach:**
+- Multiple simultaneous frequency carriers transmitting in parallel
+- Uses G-C perfect fourth musical intervals for natural sound
+- Potential for 4-8x throughput improvement
+- Requires sophisticated cross-talk management
+- See `frequency_analysis.py` for harmonic interference diagnostics
+
+### Spectrogram Bitmap Encoding
+- **`birdsong_bitmap.py`** - Treats time-frequency spectrograms as 2D images for data encoding
+- Pattern-based transmission using spectrogram "pixels"
+- Exploits 2D nature of spectrograms for parallel data encoding
+
+### Minimal/Alternative Versions
+- **`poc.py`** - File-based proof-of-concept (196 Hz/1760 Hz, simple send/recv)
+- **`modem.py`** - Minimal stdlib-only version (no numpy/scipy dependencies)
+
+### Utilities
+- **`generate_spectrogram.py`** - Visualize WAV files as spectrograms
+- **`frequency_analysis.py`** - Diagnostic tools for harmonic interference
+- **`debug.py`** - Bit sequence visualization
+- **`test_bit_conversion.py`** - Unit tests for bit conversion pipeline
+
+See `/workspace/` directory for research documentation explaining advanced techniques.

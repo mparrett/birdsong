@@ -1,134 +1,65 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Birdsong is a Python-based acoustic modem that transmits data using audio signals (FSK modulation).
 
-## Project Overview
-
-Birdsong is a Python-based acoustic modem proof-of-concept that implements full bidirectional communication using audio signals through Frequency Shift Keying (FSK) modulation. The project has evolved from a single-file sender to a complete communication system.
-
-## Development Commands
-
-### Just Build System
-This project uses [Just](https://github.com/casey/just) as the primary build tool:
+## Bash Commands
 
 ```bash
-# Primary commands
-just send [args]    # Generate acoustic signal WAV file
-just recv [args]    # Decode acoustic signal from WAV file  
-just e2e           # End-to-end test: send -> play -> recv
-
-# Development commands
-just install       # Install dependencies (including dev)
-just format        # Format code with ruff
-just lint          # Lint and fix code with ruff
-just check         # Check code without fixing
-just clean         # Remove generated WAV files
-just help          # Show all available commands
+# Primary workflow (see justfile for all commands)
+just install                    # Install dependencies
+uv run python birdsong.py send  # Generate audio signal
+uv run python birdsong.py recv  # Decode audio signal
+just e2e-poc                    # End-to-end test: send -> play -> recv
+just format                     # Format code with ruff
+just lint                       # Lint and fix code
 ```
 
-### Package Management
-```bash
-# Manual UV commands (if not using Just)
-uv sync            # Install dependencies
-uv sync --group dev # Install with dev dependencies
-uv run python poc.py send  # Run main implementation
-```
+## Dependencies
 
-### Dependencies
-- **UV**: Modern Python package manager for dependency management
-- **Python 3.11+**: Required (specified in `.python-version`)
-- **Ruff**: Code formatting and linting (dev dependency)
+- **Python 3.11+** (specified in `.python-version`)
+- **UV** for package management
+- **NumPy, SciPy** for signal processing
+- **SoundDevice** for real-time audio I/O (not yet in pyproject.toml - add if needed)
+- **Matplotlib** for spectrograms
+- **Ruff** for formatting/linting (dev)
 
-## Architecture
+## Core Files
 
-### Multiple Implementations
-The codebase contains three main implementations with different architectural approaches:
+### Production Implementations
+- **`birdsong.py`** - Primary FSK implementation (20 bits/s, 100% reliable, real-time audio I/O)
+- **`poc.py`** - File-based proof-of-concept (196 Hz/1760 Hz, simple send/recv)
+- **`modem.py`** - Minimal stdlib-only version (no numpy/scipy)
 
-#### 1. `poc.py` - Primary Implementation (File-based)
-- **Purpose**: Main development version with full send/recv functionality
-- **I/O**: WAV file generation and processing using built-in `wave` module
-- **Frequencies**: 196 Hz (G3) for '0', 1760 Hz (A6) for '1'
-- **Features**: Noise injection, hardcoded test sequences, bidirectional communication
+### Research Implementations
+- **`birdsong_fsk_sweeps.py`** - Hybrid dual-mode (FSK + frequency sweeps, 100 bits/s experimental)
+- **`birdsong_8band.py`** - 8-band parallel carrier (highest throughput research)
+- **`birdsong_bitmap.py`** - Spectrogram bitmap encoding
+- Various sweep and multi-band variants (2band, 4band, sweeps_4sym, sweeps_8sym)
 
-#### 2. `birdsong.py` - Real-time Version
-- **Purpose**: Advanced real-time audio I/O with microphone/speaker support
-- **Dependencies**: NumPy, SciPy, SoundDevice for real-time processing
-- **Features**: State machine receiver, handshake detection, checksum validation
-- **I/O**: Real-time microphone input, speaker output, stdin/stdout pipes
+### Utilities
+- **`generate_spectrogram.py`** - Visualize signals
+- **`frequency_analysis.py`** - Harmonic interference diagnostics
+- **`debug.py`** - Bit sequence visualization
 
-#### 3. `modem.py` - Minimal Version
-- **Purpose**: Minimal dependencies (stdlib only) with stdin/stdout piping
-- **Features**: Preamble/postamble framing, UTF-8 text encoding
-- **Approach**: Mathematical signal processing without NumPy
+## Code Style
 
-### Signal Processing Architecture
-- **FSK Modulation**: Binary data encoded as musical note frequencies
-- **Sample Rate**: 44.1 kHz (CD quality audio)
-- **Bit Duration**: 8-50ms (varies by implementation)
-- **Windowing**: Fade-in/fade-out to prevent audio clicks and artifacts
-- **Anti-aliasing**: Applied to prevent signal artifacts
+- **Functional approach**: Pure functions for signal processing, no side effects
+- **Constants-based config**: Module-level constants for all parameters (SAMPLE_RATE, BIT_DURATION, FREQ_*)
+- **Clear separation**: Signal generation vs I/O logic
+- **Sample rate**: 44.1 kHz baseline across implementations
+- **Windowing**: Always preserve fade-in/fade-out to prevent audio artifacts
 
-### Protocol Design
-- **Framing**: Handshake patterns for synchronization
-- **Error Detection**: Checksum validation in advanced implementations  
-- **State Machine**: Robust receiver with handshake detection
-- **Noise Resilience**: Configurable noise injection for testing
+## Workflow
 
-## Code Structure and Patterns
+- **Development status**: Currently consolidating research prototypes (in progress)
+- **Testing**: Use `just e2e-*` commands for end-to-end validation
+- **Visualization**: Generate spectrograms to validate signal changes
+- **Always run** `just format` and `just lint` before committing
+- Use `uv run python` to run scripts
 
-### Functional Programming Approach
-- **Pure Functions**: Signal generation functions with no side effects
-- **Constants-based Configuration**: All parameters defined as module constants
-- **Clear Separation**: Signal processing vs orchestration/I/O logic
-- **Memory Efficiency**: Signal concatenation before playback
+## Important Notes
 
-### Key Technical Components
-- **Signal Generation**: Pure sine wave generation with NumPy or stdlib math
-- **Audio I/O**: Multiple backends (file-based, real-time, piped)
-- **State Management**: Callback-based receivers with synchronization
-- **Cross-platform**: Works on macOS, Linux, Windows with appropriate audio drivers
-
-## Development Workflow
-
-### Current Branch Structure
-- **main**: Original single-file sender implementation
-- **feat/stdin-handling**: Current active development (bidirectional communication)
-- Active development happens on feature branches with descriptive names
-
-### Code Quality Tools
-- **Formatter**: Ruff (replaces Black)
-- **Linter**: Ruff (replaces Flake8, Pylint)
-- **Configuration**: Defined in `pyproject.toml`
-- **Usage**: Always run `just format` and `just lint` before committing
-
-### Testing and Validation
-- **End-to-end Testing**: Use `just e2e` for complete signal round-trip
-- **Signal Validation**: Generate spectrograms with `generate_spectrogram.py`
-- **Debug Utilities**: Available in `debug.py` for troubleshooting
-- **No Unit Testing**: Framework not yet implemented - consider pytest for future development
-
-## Common Development Tasks
-
-### Adding New Features
-1. Choose appropriate implementation file based on requirements:
-   - `poc.py` for file-based prototyping
-   - `birdsong.py` for real-time audio features
-   - `modem.py` for minimal dependency changes
-2. Follow functional programming patterns with pure functions
-3. Test with `just e2e` workflow
-4. Format and lint with `just format` and `just lint`
-
-### Signal Processing Modifications
-- Frequency mappings are implementation-specific constants
-- All implementations use 44.1kHz sample rate as baseline
-- Windowing functions prevent audio artifacts - preserve these patterns
-- Test changes with spectrogram generation for visual validation
-
-### Protocol Changes
-- Handshake patterns in `birdsong.py` for synchronization
-- Framing logic in `modem.py` for stdin/stdout compatibility
-- Error detection mechanisms vary by implementation
-- Maintain backward compatibility when possible
-
-## Development Notes
-- Use `uv run python` to run python scripts
+- Production use: **`birdsong.py`** (100% reliable)
+- Research/experimentation: Choose based on technique interest
+- See **README.md** for detailed documentation and performance comparisons
+- Challenge subproject in `/challenge/` directory (separate coursework version)
