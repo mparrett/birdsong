@@ -1,6 +1,6 @@
 # --- Compact Display ---
 
-/def display_bit_sequence_compactly(label, sequence):
+def display_bit_sequence_compactly(label, sequence):
     """Displays a sequence of bits using Unicode block characters for a compact view."""
     if not sequence:
         print(f"{label}: (empty)")

@@ -329,7 +329,7 @@ def audio_to_bitmap(audio, config):
         all_energies = np.array(all_energies)
         
         # Global statistics for overall signal level
-        global_mean = np.mean(all_energies)
+        np.mean(all_energies)
         global_std = np.std(all_energies)
         
         # Estimate noise floor (use lower percentile as background noise)
@@ -339,7 +339,7 @@ def audio_to_bitmap(audio, config):
         freq_thresholds = np.zeros(config.freq_bands)
         for f in range(config.freq_bands):
             freq_energies = energy_matrix[f, :]
-            freq_mean = np.mean(freq_energies)
+            np.mean(freq_energies)
             freq_std = np.std(freq_energies)
             
             # Adaptive threshold: noise floor + margin based on frequency-specific statistics
