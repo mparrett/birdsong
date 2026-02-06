@@ -44,6 +44,7 @@ log = _Logger()
 @dataclass
 class FrequencyConfig:
     """Configuration for FSK frequencies."""
+
     freq0: float = 196.00  # G3 - frequency for bit '0'
     freq1: float = 1760.00  # A6 - frequency for bit '1'
     freq_start: float = 4186.01  # C8 - handshake frequency
@@ -52,22 +53,23 @@ class FrequencyConfig:
 @dataclass
 class SweepConfig:
     """Configuration for frequency sweep transmission."""
+
     # Frequency ranges (G-C perfect fourth harmonies)
-    low_freq_start: float = 784.0    # G5
-    low_freq_end: float = 1046.5     # C6
-    high_freq_start: float = 1568.0  # G6  
-    high_freq_end: float = 2093.0    # C7
-    freq_start: float = 4186.01      # C8 - handshake frequency
-    
+    low_freq_start: float = 784.0  # G5
+    low_freq_end: float = 1046.5  # C6
+    high_freq_start: float = 1568.0  # G6
+    high_freq_end: float = 2093.0  # C7
+    freq_start: float = 4186.01  # C8 - handshake frequency
+
     # Timing
-    symbol_duration: float = 0.020   # 20ms per symbol for 100 bits/s
-    overlap_factor: float = 0.1      # 10% overlap between symbols
-    
+    symbol_duration: float = 0.020  # 20ms per symbol for 100 bits/s
+    overlap_factor: float = 0.1  # 10% overlap between symbols
+
     @property
     def samples_per_symbol(self):
         """Number of audio samples per symbol."""
         return int(self.symbol_duration * SAMPLE_RATE)
-    
+
     @property
     def overlap_samples(self):
         """Number of samples for overlap between symbols."""
@@ -79,7 +81,7 @@ SAMPLE_RATE = 44100
 
 # NOTE: Increased duration for better real-world reliability over the air.
 BIT_DURATION = 0.05
-CHUNK_SIZE = None # Will be set in main after parsing args
+CHUNK_SIZE = None  # Will be set in main after parsing args
 
 # Default frequency configuration
 _default_freq_config = FrequencyConfig()
@@ -137,7 +139,7 @@ def symbols_to_bits(symbols):
     bits = []
     for symbol in symbols:
         bits.append((symbol >> 1) & 1)  # High bit
-        bits.append(symbol & 1)         # Low bit
+        bits.append(symbol & 1)  # Low bit
     return bits
 
 
@@ -169,14 +171,14 @@ def generate_frequency_sweep(start_freq, end_freq, duration, sample_rate):
     """Generates a smooth frequency sweep from start_freq to end_freq."""
     num_samples = int(duration * sample_rate)
     t = np.linspace(0, duration, num_samples, endpoint=False)
-    
+
     # Linear frequency sweep: f(t) = start_freq + (end_freq - start_freq) * t / duration
     # Phase: φ(t) = ∫f(t)dt = start_freq*t + (end_freq - start_freq) * t²/(2*duration)
     freq_rate = (end_freq - start_freq) / duration
     phase = 2 * np.pi * (start_freq * t + 0.5 * freq_rate * t**2)
-    
+
     sweep = np.sin(phase).astype(np.float32)
-    
+
     # Apply fade-in/fade-out to prevent audio artifacts
     fade_len = int(num_samples * 0.05)  # 5% fade for sweeps
     if fade_len > 0:
@@ -184,47 +186,57 @@ def generate_frequency_sweep(start_freq, end_freq, duration, sample_rate):
         fade_out = np.linspace(1, 0, fade_len)
         sweep[:fade_len] *= fade_in
         sweep[-fade_len:] *= fade_out
-    
+
     return sweep
 
 
 def generate_symbol_sweep(symbol, sweep_config):
     """
     Generate audio for a 2-bit symbol using frequency sweeps.
-    
+
     Symbol encoding:
     0 (00): Low Rising   (784Hz → 1046Hz)
-    1 (01): Low Falling  (1046Hz → 784Hz)  
+    1 (01): Low Falling  (1046Hz → 784Hz)
     2 (10): High Rising  (1568Hz → 2093Hz)
     3 (11): High Falling (2093Hz → 1568Hz)
     """
     duration = sweep_config.symbol_duration
-    
+
     if symbol == 0:  # 00: Low Rising
         return generate_frequency_sweep(
-            sweep_config.low_freq_start, sweep_config.low_freq_end, 
-            duration, SAMPLE_RATE
+            sweep_config.low_freq_start,
+            sweep_config.low_freq_end,
+            duration,
+            SAMPLE_RATE,
         )
     elif symbol == 1:  # 01: Low Falling
         return generate_frequency_sweep(
-            sweep_config.low_freq_end, sweep_config.low_freq_start,
-            duration, SAMPLE_RATE
+            sweep_config.low_freq_end,
+            sweep_config.low_freq_start,
+            duration,
+            SAMPLE_RATE,
         )
     elif symbol == 2:  # 10: High Rising
         return generate_frequency_sweep(
-            sweep_config.high_freq_start, sweep_config.high_freq_end,
-            duration, SAMPLE_RATE
+            sweep_config.high_freq_start,
+            sweep_config.high_freq_end,
+            duration,
+            SAMPLE_RATE,
         )
-    elif symbol == 3:  # 11: High Falling  
+    elif symbol == 3:  # 11: High Falling
         return generate_frequency_sweep(
-            sweep_config.high_freq_end, sweep_config.high_freq_start,
-            duration, SAMPLE_RATE
+            sweep_config.high_freq_end,
+            sweep_config.high_freq_start,
+            duration,
+            SAMPLE_RATE,
         )
     else:
         raise ValueError(f"Invalid symbol: {symbol} (must be 0-3)")
 
 
-def command_send(output_file, bit_duration, freq_config, sweep_mode=False, sweep_config=None):
+def command_send(
+    output_file, bit_duration, freq_config, sweep_mode=False, sweep_config=None
+):
     """Reads from stdin, frames the data, and plays or saves it as audio."""
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
@@ -238,18 +250,24 @@ def command_send(output_file, bit_duration, freq_config, sweep_mode=False, sweep
         payload_bits = bytes_to_bits(payload_bytes)
         checksum_val = calculate_checksum(payload_bytes)
         checksum_bits = bytes_to_bits(bytes([checksum_val]))
-        
+
         all_bits = payload_bits + checksum_bits
         symbols = bits_to_symbols(all_bits)
-        
-        log.info(f"Sender: Transmitting {len(symbols)} symbols ({len(all_bits)} bits) in sweep mode.")
-        
+
+        log.info(
+            f"Sender: Transmitting {len(symbols)} symbols ({len(all_bits)} bits) in sweep mode."
+        )
+
         # Generate handshake tone + sweep symbols
-        handshake_tone = generate_tone(sweep_config.freq_start, bit_duration * 2, SAMPLE_RATE)
-        symbol_sweeps = [generate_symbol_sweep(symbol, sweep_config) for symbol in symbols]
-        
+        handshake_tone = generate_tone(
+            sweep_config.freq_start, bit_duration * 2, SAMPLE_RATE
+        )
+        symbol_sweeps = [
+            generate_symbol_sweep(symbol, sweep_config) for symbol in symbols
+        ]
+
         full_signal = np.hstack([handshake_tone] + symbol_sweeps)
-        
+
     else:
         # Original FSK mode
         handshake_bits = [2, 2]
@@ -263,7 +281,9 @@ def command_send(output_file, bit_duration, freq_config, sweep_mode=False, sweep
         full_signal = np.hstack(
             [
                 generate_tone(
-                    freq_config.freq0 if bit == 0 else (freq_config.freq1 if bit == 1 else freq_config.freq_start),
+                    freq_config.freq0
+                    if bit == 0
+                    else (freq_config.freq1 if bit == 1 else freq_config.freq_start),
                     bit_duration,
                     SAMPLE_RATE,
                 )
@@ -315,25 +335,27 @@ def process_received_bits():
     # Clear the last debug line from the screen
     if sys.stdout.isatty():
         print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
-    
+
     if receiver_state["sweep_mode"]:
         # Process symbols in sweep mode
         if not receiver_state["all_symbols"]:
             log.error("\nReceiver Error: No symbol data found.")
             return
-        
+
         # Convert symbols to bits
         all_bits = symbols_to_bits(receiver_state["all_symbols"])
-        
+
         if len(all_bits) < 8:
             log.error("\nReceiver Error: Insufficient data for checksum.")
             return
-        
+
         payload_bits = all_bits[:-8]
         checksum_bits = all_bits[-8:]
-        
-        log.info(f"\nReceiver: Decoded {len(receiver_state['all_symbols'])} symbols → {len(all_bits)} bits")
-        
+
+        log.info(
+            f"\nReceiver: Decoded {len(receiver_state['all_symbols'])} symbols → {len(all_bits)} bits"
+        )
+
     else:
         # Process bits in FSK mode
         if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
@@ -367,7 +389,7 @@ def reset_receiver():
     freq_config = receiver_state["freq_config"]
     sweep_mode = receiver_state["sweep_mode"]
     sweep_config = receiver_state["sweep_config"]
-    
+
     receiver_state.update(
         {
             "state": "WAITING_FOR_HANDSHAKE",
@@ -417,31 +439,31 @@ def find_dominant_bit(data, sample_rate, freq_config):
 def detect_sweep_symbol(data, sample_rate, sweep_config):
     """Detects which 2-bit symbol based on frequency sweep analysis."""
     from scipy import signal
-    
+
     # Compute spectrogram to analyze frequency trajectory
     f, t, Sxx = signal.spectrogram(data, sample_rate, nperseg=64, noverlap=32)
-    
+
     if Sxx.shape[1] < 2:
         return None  # Can't analyze
-    
+
     # Find dominant frequency at start and end
     start_spectrum = Sxx[:, 0]
     end_spectrum = Sxx[:, -1]
-    
+
     start_freq = f[np.argmax(start_spectrum)]
     end_freq = f[np.argmax(end_spectrum)]
-    
+
     # Classify based on frequency band and direction
     low_range = (sweep_config.low_freq_start + sweep_config.low_freq_end) / 2
     high_range = (sweep_config.high_freq_start + sweep_config.high_freq_end) / 2
-    
+
     # Determine if we're in low or high frequency band
     avg_freq = (start_freq + end_freq) / 2
     is_low_band = avg_freq < (low_range + high_range) / 2
-    
+
     # Determine sweep direction
     is_rising = end_freq > start_freq
-    
+
     # Map to symbols
     if is_low_band:
         return 0 if is_rising else 1  # Low Rising=0, Low Falling=1
@@ -465,15 +487,17 @@ def audio_callback(indata, frames, time, status):
                 if sys.stdout.isatty():
                     sys.stdout.write(" " * CONSOLE_CLEAR_WIDTH + "\r")
                     sys.stdout.flush()
-                log.info("Receiver: Handshake detected. Receiving sweep data...", flush=True)
+                log.info(
+                    "Receiver: Handshake detected. Receiving sweep data...", flush=True
+                )
                 receiver_state["state"] = "RECEIVING_DATA"
-            
+
         elif receiver_state["state"] == "RECEIVING_DATA":
             # Detect symbols in sweep mode
             symbol = detect_sweep_symbol(
                 indata.flatten(), SAMPLE_RATE, receiver_state["sweep_config"]
             )
-            
+
             if symbol is not None:
                 if log.verbose:
                     symbol_names = ["L↗", "L↘", "H↗", "H↘"]
@@ -486,7 +510,7 @@ def audio_callback(indata, frames, time, status):
                 if receiver_state["silence_counter"] > TIMEOUT_CHUNKS:
                     process_received_bits()
                     reset_receiver()
-    
+
     else:
         # Original FSK mode processing
         bit = find_dominant_bit(
@@ -575,12 +599,14 @@ def process_wav_data(wav_source, chunk_size):
         log.error(f"An error occurred while processing the WAV data: {e}")
 
 
-def command_recv(input_file, chunk_size, freq_config, sweep_mode=False, sweep_config=None):
+def command_recv(
+    input_file, chunk_size, freq_config, sweep_mode=False, sweep_config=None
+):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
     receiver_state["freq_config"] = freq_config
     receiver_state["sweep_mode"] = sweep_mode
     receiver_state["sweep_config"] = sweep_config
-    
+
     if sweep_mode:
         # Adjust chunk size for sweep mode
         chunk_size = sweep_config.samples_per_symbol
@@ -616,26 +642,26 @@ def command_recv(input_file, chunk_size, freq_config, sweep_mode=False, sweep_co
 # --- Argument Parsing Helper ---
 def get_frequency(note_name):
     """Converts a musical note name (e.g., 'A4') to its frequency in Hz."""
-    NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    
-    note_str = ''.join(filter(str.isalpha, note_name)).upper()
-    sharp_count = note_name.count('#')
-    flat_count = note_name.count('b')
-    note_str += '#' * sharp_count
-    note_str += 'b' * flat_count
-    
-    octave_str = ''.join(filter(str.isdigit, note_name))
+    NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+    note_str = "".join(filter(str.isalpha, note_name)).upper()
+    sharp_count = note_name.count("#")
+    flat_count = note_name.count("b")
+    note_str += "#" * sharp_count
+    note_str += "b" * flat_count
+
+    octave_str = "".join(filter(str.isdigit, note_name))
     if not octave_str:
         raise ValueError("Note name must include an octave number (e.g., 'A4')")
     octave = int(octave_str)
-    
+
     try:
         pos = NOTES.index(note_str)
     except ValueError:
         raise ValueError(f"Unknown note '{note_str}'")
 
     dist = (octave - REFERENCE_OCTAVE) * SEMITONES_PER_OCTAVE + (pos - A_NOTE_INDEX)
-    return 440 * (2**(1/12))**dist
+    return 440 * (2 ** (1 / 12)) ** dist
 
 
 def freq_type(value):
@@ -646,18 +672,19 @@ def freq_type(value):
         try:
             return get_frequency(value)
         except (ValueError, KeyError, IndexError) as e:
-            raise argparse.ArgumentTypeError(f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}")
+            raise argparse.ArgumentTypeError(
+                f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}"
+            )
 
 
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
-    
     parser = argparse.ArgumentParser(
         description="Transmit or receive data using Frequency-Shift Keying (FSK) modulation over audio.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    
+
     # Parent parser for shared arguments
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument(
@@ -666,32 +693,87 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable verbose status messages to stderr.",
     )
-    parent_parser.add_argument('--bit-duration', type=float, default=0.05, help='Duration of each data bit in seconds.')
-    parent_parser.add_argument('--freq0', type=freq_type, default=196.00, help='Frequency in Hz for bit "0" (or a note like "G3").')
-    parent_parser.add_argument('--freq1', type=freq_type, default=1760.00, help='Frequency in Hz for bit "1" (or a note like "A6").')
-    parent_parser.add_argument('--freq-start', type=freq_type, default=4186.01, help='Frequency in Hz for handshake signal (or a note like "C8"). Lower frequencies are less disturbing to pets.')
-    
-    # Sweep mode arguments
-    parent_parser.add_argument('--sweep-mode', action='store_true', help='Enable frequency sweep mode for 5x faster transmission (100 bits/s)')
-    parent_parser.add_argument('--symbol-duration', type=float, default=0.020, help='Duration of each symbol in sweep mode (seconds)')
-    parent_parser.add_argument('--sweep-low-start', type=freq_type, default=784.0, help='Low sweep start frequency (G5)')
-    parent_parser.add_argument('--sweep-low-end', type=freq_type, default=1046.5, help='Low sweep end frequency (C6)')
-    parent_parser.add_argument('--sweep-high-start', type=freq_type, default=1568.0, help='High sweep start frequency (G6)')
-    parent_parser.add_argument('--sweep-high-end', type=freq_type, default=2093.0, help='High sweep end frequency (C7)')
+    parent_parser.add_argument(
+        "--bit-duration",
+        type=float,
+        default=0.05,
+        help="Duration of each data bit in seconds.",
+    )
+    parent_parser.add_argument(
+        "--freq0",
+        type=freq_type,
+        default=196.00,
+        help='Frequency in Hz for bit "0" (or a note like "G3").',
+    )
+    parent_parser.add_argument(
+        "--freq1",
+        type=freq_type,
+        default=1760.00,
+        help='Frequency in Hz for bit "1" (or a note like "A6").',
+    )
+    parent_parser.add_argument(
+        "--freq-start",
+        type=freq_type,
+        default=4186.01,
+        help='Frequency in Hz for handshake signal (or a note like "C8"). Lower frequencies are less disturbing to pets.',
+    )
 
-    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+    # Sweep mode arguments
+    parent_parser.add_argument(
+        "--sweep-mode",
+        action="store_true",
+        help="Enable frequency sweep mode for 5x faster transmission (100 bits/s)",
+    )
+    parent_parser.add_argument(
+        "--symbol-duration",
+        type=float,
+        default=0.020,
+        help="Duration of each symbol in sweep mode (seconds)",
+    )
+    parent_parser.add_argument(
+        "--sweep-low-start",
+        type=freq_type,
+        default=784.0,
+        help="Low sweep start frequency (G5)",
+    )
+    parent_parser.add_argument(
+        "--sweep-low-end",
+        type=freq_type,
+        default=1046.5,
+        help="Low sweep end frequency (C6)",
+    )
+    parent_parser.add_argument(
+        "--sweep-high-start",
+        type=freq_type,
+        default=1568.0,
+        help="High sweep start frequency (G6)",
+    )
+    parent_parser.add_argument(
+        "--sweep-high-end",
+        type=freq_type,
+        default=2093.0,
+        help="High sweep end frequency (C7)",
+    )
+
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, help="Available commands"
+    )
 
     # Sender command
-    parser_send = subparsers.add_parser('send', help='Transmit data from stdin.', parents=[parent_parser])
+    parser_send = subparsers.add_parser(
+        "send", help="Transmit data from stdin.", parents=[parent_parser]
+    )
     parser_send.add_argument(
         "-o",
         "--output",
         metavar="FILE",
         help="Write audio to a WAV file. Use '-' for stdout.",
     )
-    
+
     # Receiver command
-    parser_recv = subparsers.add_parser('recv', help='Receive data from microphone or file.', parents=[parent_parser])
+    parser_recv = subparsers.add_parser(
+        "recv", help="Receive data from microphone or file.", parents=[parent_parser]
+    )
     parser_recv.add_argument(
         "-i",
         "--input",
@@ -706,9 +788,9 @@ if __name__ == "__main__":
 
     # Create frequency configuration from CLI arguments
     freq_config = FrequencyConfig(
-        freq0=args.freq0, freq1=args.freq1, freq_start=getattr(args, 'freq_start')
+        freq0=args.freq0, freq1=args.freq1, freq_start=getattr(args, "freq_start")
     )
-    
+
     # Create sweep configuration if sweep mode is enabled
     sweep_config = None
     if args.sweep_mode:
@@ -717,11 +799,13 @@ if __name__ == "__main__":
             low_freq_end=args.sweep_low_end,
             high_freq_start=args.sweep_high_start,
             high_freq_end=args.sweep_high_end,
-            freq_start=getattr(args, 'freq_start'),
+            freq_start=getattr(args, "freq_start"),
             symbol_duration=args.symbol_duration,
         )
-        log.info(f"Sweep mode enabled: {1/args.symbol_duration:.0f} symbols/s ≈ {2/args.symbol_duration:.0f} bits/s")
-    
+        log.info(
+            f"Sweep mode enabled: {1 / args.symbol_duration:.0f} symbols/s ≈ {2 / args.symbol_duration:.0f} bits/s"
+        )
+
     # Calculate chunk size
     if args.sweep_mode and sweep_config:
         chunk_size = sweep_config.samples_per_symbol
@@ -739,8 +823,8 @@ if __name__ == "__main__":
         )
     elif args.command == "recv":
         command_recv(
-            input_file=args.input, 
-            chunk_size=chunk_size, 
+            input_file=args.input,
+            chunk_size=chunk_size,
             freq_config=freq_config,
             sweep_mode=args.sweep_mode,
             sweep_config=sweep_config,
