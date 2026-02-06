@@ -1,5 +1,9 @@
 # Birdsong acoustic modem justfile
 
+# Show available commands by default
+default:
+    @just --list
+
 # Run the acoustic modem sender
 send *args:
     uv run python3 poc.py send {{args}}
