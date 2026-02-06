@@ -10,7 +10,14 @@
       "Bash(uv run:*)",
       "Bash(python3:*)",
       "Bash(just:*)",
-      "Bash(sox:*)"
+      "Bash(sox:*)",
+      "Bash(git -C /Users/matt/projects-new/birdsong status --short)",
+      "Bash(git -C /Users/matt/projects-new/birdsong status)",
+      "Bash(git -C /Users/matt/projects-new/birdsong diff --stat)",
+      "Bash(git -C /Users/matt/projects-new/birdsong log --oneline -3)",
+      "Bash(git -C /Users/matt/projects-new/birdsong add:*)",
+      "Bash(git -C /Users/matt/projects-new/birdsong commit -m \"$\\(cat <<''EOF''\nchore: optimize CLAUDE.md and init project memory\n\n- Streamline CLAUDE.md \\(60% reduction, focus on actionable commands\\)\n- Add project memory structure \\(docs/project_notes/\\)\n- Fix truncated e2e-spectro recipe in justfile\n- Move temp files to workspace/archive/\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C /Users/matt/projects-new/birdsong commit -m \"$\\(cat <<''EOF''\nfix: make bare `just` show available commands\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ],
     "deny": []
   }

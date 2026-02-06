@@ -41,22 +41,23 @@ log = _Logger()
 @dataclass
 class FrequencyConfig:
     """Configuration for FSK frequencies."""
+
     freq0: float = 440  # 196.00  # G3 - frequency for bit '0'
     freq1: float = 1760.00  # A6 - frequency for bit '1'
     freq_start: float = 196.0  # G3 (low) 196.0; or C8 (high) 4186.01 - handshake frequency; lower is less disturbing for humans
-    
+
     # Multi-band CPFSK settings
     multi_band: bool = True  # Enable multi-band mode for enhanced data rate
-    band_count: int = 4      # Number of frequency bands (2=2x rate, 4=4x rate)
-    
+    band_count: int = 4  # Number of frequency bands (2=2x rate, 4=4x rate)
+
     # 4-band frequency allocation using musical intervals (G octaves)
-    freq_band1: float = 196.0   # G3 - Bass
-    freq_band2: float = 392.0   # G4 - Mid-low  
-    freq_band3: float = 784.0   # G5 - Mid-high
+    freq_band1: float = 196.0  # G3 - Bass
+    freq_band2: float = 392.0  # G4 - Mid-low
+    freq_band3: float = 784.0  # G5 - Mid-high
     freq_band4: float = 1568.0  # G6 - Treble
-    
+
     # Legacy 2-band support
-    freq_low: float = 196.0   # G3 - Low frequency band
+    freq_low: float = 196.0  # G3 - Low frequency band
     freq_high: float = 1760.0  # A6 - High frequency band
 
 
@@ -103,7 +104,7 @@ def bits_to_symbols_2bit(bits):
     # Pad with 0 if odd number of bits
     if len(bits) % 2 == 1:
         bits = bits + [0]
-    
+
     for i in range(0, len(bits), 2):
         symbol = bits[i] * 2 + bits[i + 1]  # Convert 2 bits to symbol 0-3
         symbols.append(symbol)
@@ -116,7 +117,7 @@ def bits_to_symbols_4bit(bits):
     # Pad with 0s to make multiple of 4
     while len(bits) % 4 != 0:
         bits = bits + [0]
-    
+
     for i in range(0, len(bits), 4):
         # Convert 4 bits to symbol 0-15
         symbol = bits[i] * 8 + bits[i + 1] * 4 + bits[i + 2] * 2 + bits[i + 3]
@@ -139,7 +140,7 @@ def symbols_to_bits_2bit(symbols):
     bits = []
     for symbol in symbols:
         bits.append((symbol >> 1) & 1)  # High bit
-        bits.append(symbol & 1)         # Low bit
+        bits.append(symbol & 1)  # Low bit
     return bits
 
 
@@ -150,7 +151,7 @@ def symbols_to_bits_4bit(symbols):
         bits.append((symbol >> 3) & 1)  # Bit 3 (MSB)
         bits.append((symbol >> 2) & 1)  # Bit 2
         bits.append((symbol >> 1) & 1)  # Bit 1
-        bits.append(symbol & 1)         # Bit 0 (LSB)
+        bits.append(symbol & 1)  # Bit 0 (LSB)
     return bits
 
 
@@ -166,11 +167,11 @@ def get_band_amplitudes(symbol, band_count=4):
 
 def get_2band_amplitudes(symbol):
     """Get amplitude values for 2-band system (legacy).
-    
+
     Returns (low_amplitude, high_amplitude):
     Symbol 0 (00): (0.0, 0.0) - silence
     Symbol 1 (01): (1.0, 0.0) - low band only
-    Symbol 2 (10): (0.0, 1.0) - high band only  
+    Symbol 2 (10): (0.0, 1.0) - high band only
     Symbol 3 (11): (0.7, 0.7) - both bands (chord)
     """
     if symbol == 0:
@@ -187,13 +188,13 @@ def get_2band_amplitudes(symbol):
 
 def get_4band_amplitudes(symbol):
     """Get amplitude values for 4-band system.
-    
+
     Returns (amp1, amp2, amp3, amp4) where each bit controls one band:
     - Bit 0 (LSB) controls band1 (bass)
-    - Bit 1 controls band2 (mid-low)  
+    - Bit 1 controls band2 (mid-low)
     - Bit 2 controls band3 (mid-high)
     - Bit 3 (MSB) controls band4 (treble)
-    
+
     Examples:
     Symbol  0 (0000): (0.0, 0.0, 0.0, 0.0) - silence
     Symbol  1 (0001): (0.6, 0.0, 0.0, 0.0) - bass only
@@ -203,17 +204,17 @@ def get_4band_amplitudes(symbol):
     # Use moderate amplitude (0.6) for single bands, reduced (0.5) for multiple bands
     base_amp = 0.6
     multi_amp = 0.5
-    
+
     # Count how many bands are active
-    active_bands = bin(symbol).count('1')
+    active_bands = bin(symbol).count("1")
     amp = multi_amp if active_bands > 1 else base_amp
-    
+
     # Extract amplitude for each band from symbol bits
-    amp1 = amp if (symbol & 1) else 0.0      # Bit 0 - Band1 (bass)
-    amp2 = amp if (symbol & 2) else 0.0      # Bit 1 - Band2 (mid-low)
-    amp3 = amp if (symbol & 4) else 0.0      # Bit 2 - Band3 (mid-high)
-    amp4 = amp if (symbol & 8) else 0.0      # Bit 3 - Band4 (treble)
-    
+    amp1 = amp if (symbol & 1) else 0.0  # Bit 0 - Band1 (bass)
+    amp2 = amp if (symbol & 2) else 0.0  # Bit 1 - Band2 (mid-low)
+    amp3 = amp if (symbol & 4) else 0.0  # Bit 2 - Band3 (mid-high)
+    amp4 = amp if (symbol & 8) else 0.0  # Bit 3 - Band4 (treble)
+
     return (amp1, amp2, amp3, amp4)
 
 
@@ -271,51 +272,59 @@ def generate_cpfsk_signal(bitstream, bit_duration, sample_rate, freq_config):
         else:
             # Normal bits (0,1) -> NRZ encoding (-1,+1)
             processed_bitstream.append(bit * 2 - 1)
-    
+
     nrz_bitstream = np.array(processed_bitstream)
-    
+
     # Calculate parameters
     f_center = (freq_config.freq0 + freq_config.freq1) / 2
     f_delta = abs(freq_config.freq1 - freq_config.freq0) / 2
-    
+
     steps_per_bit = int(sample_rate * bit_duration)
     total_samples = len(bitstream) * steps_per_bit
-    
+
     # Initialize output array
     y = np.zeros(total_samples, dtype=np.float32)
-    
+
     # Integration variable (frequency modulation state)
     m = 0.0
-    
+
     for i in range(1, total_samples):
         # Interpolate bitstream to steps_per_bit points per bit
         bit_index = min(i // steps_per_bit, len(nrz_bitstream) - 1)
         prev_bit_index = min((i - 1) // steps_per_bit, len(nrz_bitstream) - 1)
-        
+
         # Trapezoidal integration of the bitstream
         m += (nrz_bitstream[prev_bit_index] + nrz_bitstream[bit_index]) / 2
-        
+
         # FM modulation with continuous phase
-        phase = 2 * np.pi * i * (f_center / sample_rate) + 2 * np.pi * m * (f_delta / sample_rate)
+        phase = 2 * np.pi * i * (f_center / sample_rate) + 2 * np.pi * m * (
+            f_delta / sample_rate
+        )
         y[i] = np.cos(phase)
-    
+
     return y
 
 
-def generate_multiband_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_config):
+def generate_multiband_cpfsk_signal(
+    symbolstream, bit_duration, sample_rate, freq_config
+):
     """Generates multi-band continuous phase FSK signal from symbols.
-    
+
     Supports both 2-band and 4-band configurations:
     - 2-band: symbols 0-3 (2 bits each) for 2x data rate
     - 4-band: symbols 0-15 (4 bits each) for 4x data rate
-    
+
     Maintains continuous phase on all bands even when amplitude=0
     Smooth amplitude transitions prevent audio clicks
     """
     if freq_config.band_count == 2:
-        return generate_2band_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_config)
+        return generate_2band_cpfsk_signal(
+            symbolstream, bit_duration, sample_rate, freq_config
+        )
     elif freq_config.band_count == 4:
-        return generate_4band_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_config)
+        return generate_4band_cpfsk_signal(
+            symbolstream, bit_duration, sample_rate, freq_config
+        )
     else:
         raise ValueError(f"Unsupported band count: {freq_config.band_count}")
 
@@ -324,37 +333,41 @@ def generate_2band_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_co
     """Generates 2-band continuous phase FSK signal from symbols (0-3)."""
     steps_per_symbol = int(sample_rate * bit_duration)
     total_samples = len(symbolstream) * steps_per_symbol
-    
+
     # Initialize output array
     y = np.zeros(total_samples, dtype=np.float32)
-    
+
     # Phase integration variables for continuous phase on each band
     low_phase_integrator = 0.0
     high_phase_integrator = 0.0
-    
+
     # Process each symbol with smooth amplitude transitions
     for symbol_idx, symbol in enumerate(symbolstream):
         start_sample = symbol_idx * steps_per_symbol
         end_sample = start_sample + steps_per_symbol
-        
+
         # Get amplitude values for this symbol
         low_amp, high_amp = get_2band_amplitudes(symbol)
-        
+
         # Generate time array for this symbol
         t_symbol = np.arange(steps_per_symbol) / sample_rate
-        
+
         # Generate continuous phase signals for both bands
         # Low band continuous phase
-        low_phase_base = 2 * np.pi * freq_config.freq_low * t_symbol + low_phase_integrator
+        low_phase_base = (
+            2 * np.pi * freq_config.freq_low * t_symbol + low_phase_integrator
+        )
         low_signal = low_amp * np.cos(low_phase_base)
-        
-        # High band continuous phase  
-        high_phase_base = 2 * np.pi * freq_config.freq_high * t_symbol + high_phase_integrator
+
+        # High band continuous phase
+        high_phase_base = (
+            2 * np.pi * freq_config.freq_high * t_symbol + high_phase_integrator
+        )
         high_signal = high_amp * np.cos(high_phase_base)
-        
+
         # Combine bands
         symbol_signal = low_signal + high_signal
-        
+
         # Apply smooth amplitude envelope to prevent clicks at symbol boundaries
         if symbol_idx == 0 or symbol_idx == len(symbolstream) - 1:
             # Fade in/out at start/end of transmission
@@ -365,18 +378,18 @@ def generate_2band_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_co
             if symbol_idx == len(symbolstream) - 1:
                 fade_out = np.linspace(1, 0, fade_samples)
                 symbol_signal[-fade_samples:] *= fade_out
-        
+
         # Store in output array
         y[start_sample:end_sample] = symbol_signal
-        
+
         # Update phase integrators for continuous phase across symbol boundaries
         low_phase_integrator += 2 * np.pi * freq_config.freq_low * bit_duration
         high_phase_integrator += 2 * np.pi * freq_config.freq_high * bit_duration
-        
+
         # Keep phases in reasonable range to prevent numerical issues
         low_phase_integrator = low_phase_integrator % (2 * np.pi)
         high_phase_integrator = high_phase_integrator % (2 * np.pi)
-    
+
     return y
 
 
@@ -384,39 +397,48 @@ def generate_4band_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_co
     """Generates 4-band continuous phase FSK signal from symbols (0-15)."""
     steps_per_symbol = int(sample_rate * bit_duration)
     total_samples = len(symbolstream) * steps_per_symbol
-    
+
     # Initialize output array
     y = np.zeros(total_samples, dtype=np.float32)
-    
+
     # Phase integration variables for continuous phase on each of 4 bands
     phase_integrators = [0.0, 0.0, 0.0, 0.0]
-    frequencies = [freq_config.freq_band1, freq_config.freq_band2, 
-                   freq_config.freq_band3, freq_config.freq_band4]
-    
+    frequencies = [
+        freq_config.freq_band1,
+        freq_config.freq_band2,
+        freq_config.freq_band3,
+        freq_config.freq_band4,
+    ]
+
     # Process each symbol with smooth amplitude transitions
     for symbol_idx, symbol in enumerate(symbolstream):
         start_sample = symbol_idx * steps_per_symbol
         end_sample = start_sample + steps_per_symbol
-        
+
         # Get amplitude values for this symbol (4 bands)
         amplitudes = get_4band_amplitudes(symbol)
-        
+
         # Generate time array for this symbol
         t_symbol = np.arange(steps_per_symbol) / sample_rate
-        
+
         # Generate and combine continuous phase signals for all 4 bands
         symbol_signal = np.zeros(steps_per_symbol, dtype=np.float32)
-        
+
         for band_idx in range(4):
             # Generate continuous phase signal for this band
-            phase_base = 2 * np.pi * frequencies[band_idx] * t_symbol + phase_integrators[band_idx]
+            phase_base = (
+                2 * np.pi * frequencies[band_idx] * t_symbol
+                + phase_integrators[band_idx]
+            )
             band_signal = amplitudes[band_idx] * np.cos(phase_base)
             symbol_signal += band_signal
-            
+
             # Update phase integrator for continuous phase across symbol boundaries
-            phase_integrators[band_idx] += 2 * np.pi * frequencies[band_idx] * bit_duration
+            phase_integrators[band_idx] += (
+                2 * np.pi * frequencies[band_idx] * bit_duration
+            )
             phase_integrators[band_idx] = phase_integrators[band_idx] % (2 * np.pi)
-        
+
         # Apply smooth amplitude envelope to prevent clicks at symbol boundaries
         if symbol_idx == 0 or symbol_idx == len(symbolstream) - 1:
             # Fade in/out at start/end of transmission
@@ -427,10 +449,10 @@ def generate_4band_cpfsk_signal(symbolstream, bit_duration, sample_rate, freq_co
             if symbol_idx == len(symbolstream) - 1:
                 fade_out = np.linspace(1, 0, fade_samples)
                 symbol_signal[-fade_samples:] *= fade_out
-        
+
         # Store in output array
         y[start_sample:end_sample] = symbol_signal
-    
+
     return y
 
 
@@ -448,7 +470,7 @@ def command_send(output_file, bit_duration, freq_config):
         payload_bits = bytes_to_bits(payload_bytes)
         checksum_val = calculate_checksum(payload_bytes)
         checksum_bits = bytes_to_bits(bytes([checksum_val]))
-        
+
         if freq_config.band_count == 4:
             # 4-band mode: handshake symbol 2 = (0010) = band3 only
             handshake_symbols = [2, 2, 0, 0]
@@ -459,14 +481,20 @@ def command_send(output_file, bit_duration, freq_config):
             handshake_symbols = [2, 2, 0, 0]
             data_symbols = bits_to_symbols_2bit(payload_bits + checksum_bits)
             bits_per_symbol = 2
-            
+
         symbols_to_transmit = handshake_symbols + data_symbols
-        
-        log.info(f"Sender: {freq_config.band_count}-band CPFSK transmitting {len(symbols_to_transmit)} symbols ({bits_per_symbol} bits each).")
-        log.info(f"Sender: Data rate: {len(payload_bits + checksum_bits) / (len(symbols_to_transmit) * bit_duration):.1f} bits/s ({freq_config.band_count}x improvement)")
-        
+
+        log.info(
+            f"Sender: {freq_config.band_count}-band CPFSK transmitting {len(symbols_to_transmit)} symbols ({bits_per_symbol} bits each)."
+        )
+        log.info(
+            f"Sender: Data rate: {len(payload_bits + checksum_bits) / (len(symbols_to_transmit) * bit_duration):.1f} bits/s ({freq_config.band_count}x improvement)"
+        )
+
         # Generate multi-band CPFSK signal
-        full_signal = generate_multiband_cpfsk_signal(symbols_to_transmit, bit_duration, SAMPLE_RATE, freq_config)
+        full_signal = generate_multiband_cpfsk_signal(
+            symbols_to_transmit, bit_duration, SAMPLE_RATE, freq_config
+        )
     else:
         # Single-band mode (original CPFSK)
         handshake_bits = [2, 2]
@@ -476,10 +504,14 @@ def command_send(output_file, bit_duration, freq_config):
         checksum_bits = bytes_to_bits(bytes([checksum_val]))
 
         bits_to_transmit = handshake_bits + spacing_bits + payload_bits + checksum_bits
-        log.info(f"Sender: Transmitting {len(bits_to_transmit)} total symbols using continuous CPFSK.")
+        log.info(
+            f"Sender: Transmitting {len(bits_to_transmit)} total symbols using continuous CPFSK."
+        )
 
         # Generate continuous CPFSK signal
-        full_signal = generate_cpfsk_signal(bits_to_transmit, bit_duration, SAMPLE_RATE, freq_config)
+        full_signal = generate_cpfsk_signal(
+            bits_to_transmit, bit_duration, SAMPLE_RATE, freq_config
+        )
 
     if output_file:
         if output_file == "-":
@@ -515,7 +547,7 @@ receiver_state = {
     "silence_counter": 0,
     "freq_config": None,  # Will be set when receiver starts
     "rolling_decisions": [],  # Buffer for rolling window decisions
-    "decisions_per_bit": 4,   # Number of overlapping measurements per bit
+    "decisions_per_bit": 4,  # Number of overlapping measurements per bit
 }
 
 
@@ -552,7 +584,9 @@ def process_received_bits():
 def reset_receiver():
     """Resets the state machine to listen for a new message."""
     freq_config = receiver_state["freq_config"]  # Preserve freq_config
-    decisions_per_bit = receiver_state["decisions_per_bit"]  # Preserve decisions_per_bit
+    decisions_per_bit = receiver_state[
+        "decisions_per_bit"
+    ]  # Preserve decisions_per_bit
     receiver_state.update(
         {
             "state": "WAITING_FOR_HANDSHAKE",
@@ -572,112 +606,126 @@ def find_preamble_sync(audio_data, bit_duration, sample_rate, freq_config):
     if freq_config.multi_band:
         # Multi-band mode: generate expected preamble as symbols [2, 2, 0, 0]
         preamble_pattern = [2, 2, 0, 0]
-        expected_preamble = generate_multiband_cpfsk_signal(preamble_pattern, bit_duration, sample_rate, freq_config)
+        expected_preamble = generate_multiband_cpfsk_signal(
+            preamble_pattern, bit_duration, sample_rate, freq_config
+        )
     else:
         # Single-band mode: generate expected preamble signal: [2, 2, None, None]
         preamble_pattern = [2, 2, None, None]
-        expected_preamble = generate_cpfsk_signal(preamble_pattern, bit_duration, sample_rate, freq_config)
-    
+        expected_preamble = generate_cpfsk_signal(
+            preamble_pattern, bit_duration, sample_rate, freq_config
+        )
+
     # Cross-correlate to find best match
     if len(audio_data) < len(expected_preamble):
         return None, None
-    
+
     # Normalize both signals for better correlation
     audio_norm = (audio_data - np.mean(audio_data)) / (np.std(audio_data) + 1e-10)
-    preamble_norm = (expected_preamble - np.mean(expected_preamble)) / (np.std(expected_preamble) + 1e-10)
-    
+    preamble_norm = (expected_preamble - np.mean(expected_preamble)) / (
+        np.std(expected_preamble) + 1e-10
+    )
+
     # Cross-correlation
-    correlation = np.correlate(audio_norm, preamble_norm, mode='valid')
-    
+    correlation = np.correlate(audio_norm, preamble_norm, mode="valid")
+
     if len(correlation) == 0:
         return None, None
-    
+
     # Find peak correlation
-    sync_point = np.argmax(correlation) 
+    sync_point = np.argmax(correlation)
     correlation_strength = correlation[sync_point]
-    
+
     # Use the first strong correlation if it's near the beginning (like before)
     strong_threshold = np.max(correlation) * 0.7
     early_peaks = np.where(correlation > strong_threshold)[0]
     if len(early_peaks) > 0 and early_peaks[0] < len(correlation) // 4:
         sync_point = early_peaks[0]
         correlation_strength = correlation[sync_point]
-    
+
     # Calculate bit boundaries from sync point
     samples_per_bit = int(sample_rate * bit_duration)
     preamble_end = sync_point + len(expected_preamble)
-    
+
     # Data starts after the preamble
     data_start = preamble_end
-    
+
     return data_start, samples_per_bit, correlation_strength
 
 
 def decode_synchronized_bits(audio_data, data_start, samples_per_bit, freq_config):
     """Decode bits/symbols using synchronized sampling."""
     if freq_config.multi_band:
-        return decode_synchronized_symbols(audio_data, data_start, samples_per_bit, freq_config)
+        return decode_synchronized_symbols(
+            audio_data, data_start, samples_per_bit, freq_config
+        )
     else:
-        return decode_synchronized_bits_single(audio_data, data_start, samples_per_bit, freq_config)
+        return decode_synchronized_bits_single(
+            audio_data, data_start, samples_per_bit, freq_config
+        )
 
 
 def decode_synchronized_symbols(audio_data, data_start, samples_per_bit, freq_config):
     """Decode multi-band symbols using synchronized sampling."""
     symbols = []
-    
+
     # Sample at symbol centers (same as bit centers but decode symbols instead)
     max_symbols = (len(audio_data) - data_start) // samples_per_bit
-    
+
     for symbol_idx in range(max_symbols):
         symbol_center = data_start + symbol_idx * samples_per_bit + samples_per_bit // 2
         symbol_end = min(symbol_center + samples_per_bit // 4, len(audio_data))
         symbol_start = max(symbol_center - samples_per_bit // 4, 0)
-        
+
         if symbol_end <= symbol_start:
             break
-            
+
         # Extract symbol window
         symbol_window = audio_data[symbol_start:symbol_end]
-        
+
         # Detect multi-band symbol
         detected_symbol = find_multiband_symbol(symbol_window, SAMPLE_RATE, freq_config)
-        
+
         if detected_symbol is not None:
             symbols.append(detected_symbol)
         else:
             # Hit silence or noise, probably end of transmission
             break
-    
+
     # Convert symbols back to bits
     return symbols_to_bits(symbols, freq_config.band_count)
 
 
-def decode_synchronized_bits_single(audio_data, data_start, samples_per_bit, freq_config):
+def decode_synchronized_bits_single(
+    audio_data, data_start, samples_per_bit, freq_config
+):
     """Decode bits using synchronized sampling at bit centers (single-band mode)."""
     bits = []
-    
+
     # Sample at bit centers
     for bit_idx in range((len(audio_data) - data_start) // samples_per_bit):
         bit_center = data_start + bit_idx * samples_per_bit + samples_per_bit // 2
-        bit_end = min(bit_center + samples_per_bit // 4, len(audio_data))  # Use quarter-bit window around center
+        bit_end = min(
+            bit_center + samples_per_bit // 4, len(audio_data)
+        )  # Use quarter-bit window around center
         bit_start = max(bit_center - samples_per_bit // 4, 0)
-        
+
         if bit_end <= bit_start:
             break
-            
+
         # Extract bit window
         bit_window = audio_data[bit_start:bit_end]
-        
+
         # Use our frequency estimation to decode this bit
         detected_bit = find_dominant_bit(bit_window, SAMPLE_RATE, freq_config)
-        
+
         # Only accept data bits (0 or 1), stop on silence/noise
         if detected_bit in [0, 1]:
             bits.append(detected_bit)
         else:
             # Hit silence or noise, probably end of transmission
             break
-    
+
     return bits
 
 
@@ -685,26 +733,26 @@ def find_dominant_bit(data, sample_rate, freq_config):
     """Analyzes a float32 audio chunk to find the dominant bit using frequency estimation."""
     if len(data) < 2:
         return None
-        
+
     # FFT-based frequency estimation
     fft_result = np.fft.rfft(data)
     fft_magnitude = np.abs(fft_result)
     fft_freqs = np.fft.rfftfreq(len(data), 1.0 / sample_rate)
-    
+
     # Find peak in spectrum
     peak_idx = np.argmax(fft_magnitude)
     peak_freq = fft_freqs[peak_idx]
     peak_magnitude = fft_magnitude[peak_idx]
-    
+
     # Calculate weighted average frequency (centroid) around peak for better estimation
     # Use a window around the peak
     window_size = max(3, len(fft_magnitude) // 100)
     start_idx = max(0, peak_idx - window_size)
     end_idx = min(len(fft_magnitude), peak_idx + window_size + 1)
-    
+
     window_freqs = fft_freqs[start_idx:end_idx]
     window_mags = fft_magnitude[start_idx:end_idx]
-    
+
     # Weighted frequency centroid
     if np.sum(window_mags) > 0:
         estimated_freq = np.sum(window_freqs * window_mags) / np.sum(window_mags)
@@ -723,13 +771,13 @@ def find_dominant_bit(data, sample_rate, freq_config):
     # Snap to closest target frequency
     distances = {
         0: abs(estimated_freq - freq_config.freq0),
-        1: abs(estimated_freq - freq_config.freq1), 
-        2: abs(estimated_freq - freq_config.freq_start)
+        1: abs(estimated_freq - freq_config.freq1),
+        2: abs(estimated_freq - freq_config.freq_start),
     }
-    
+
     closest_bit = min(distances.keys(), key=lambda k: distances[k])
     closest_distance = distances[closest_bit]
-    
+
     # Only snap if reasonably close (within ~100Hz tolerance)
     MAX_SNAP_DISTANCE = 100.0
     if closest_distance <= MAX_SNAP_DISTANCE:
@@ -752,36 +800,36 @@ def find_2band_symbol(data, sample_rate, freq_config):
     """Analyzes a float32 audio chunk to find the 2-band symbol (0-3)."""
     if len(data) < 2:
         return None
-        
+
     # FFT-based frequency detection
     fft_result = np.fft.rfft(data)
     fft_magnitude = np.abs(fft_result)
     fft_freqs = np.fft.rfftfreq(len(data), 1.0 / sample_rate)
-    
+
     # Find magnitudes at target frequencies
     freq_low_idx = np.argmin(np.abs(fft_freqs - freq_config.freq_low))
     freq_high_idx = np.argmin(np.abs(fft_freqs - freq_config.freq_high))
-    
+
     mag_low = fft_magnitude[freq_low_idx]
     mag_high = fft_magnitude[freq_high_idx]
-    
+
     # Adaptive threshold based on signal strength and noise floor
     noise_floor = np.mean(fft_magnitude) + 2 * np.std(fft_magnitude)
     max_mag = max(mag_low, mag_high)
-    
+
     # Use adaptive threshold: either 30% of peak signal or above noise floor
     threshold = max(max_mag * 0.3, noise_floor, 10.0)  # Minimum threshold of 10
-    
+
     has_low = mag_low > threshold
     has_high = mag_high > threshold
-    
+
     # Decode symbol based on frequency presence
     if not has_low and not has_high:
         return 0  # Silence
     elif has_low and not has_high:
         return 1  # Low frequency only
     elif not has_low and has_high:
-        return 2  # High frequency only  
+        return 2  # High frequency only
     elif has_low and has_high:
         return 3  # Both frequencies (chord)
     else:
@@ -792,37 +840,41 @@ def find_4band_symbol(data, sample_rate, freq_config):
     """Analyzes a float32 audio chunk to find the 4-band symbol (0-15)."""
     if len(data) < 2:
         return None
-        
+
     # FFT-based frequency detection
     fft_result = np.fft.rfft(data)
     fft_magnitude = np.abs(fft_result)
     fft_freqs = np.fft.rfftfreq(len(data), 1.0 / sample_rate)
-    
+
     # Find magnitudes at all 4 target frequencies
-    frequencies = [freq_config.freq_band1, freq_config.freq_band2, 
-                   freq_config.freq_band3, freq_config.freq_band4]
+    frequencies = [
+        freq_config.freq_band1,
+        freq_config.freq_band2,
+        freq_config.freq_band3,
+        freq_config.freq_band4,
+    ]
     magnitudes = []
-    
+
     for freq in frequencies:
         freq_idx = np.argmin(np.abs(fft_freqs - freq))
         magnitudes.append(fft_magnitude[freq_idx])
-    
+
     # Adaptive threshold based on signal strength and noise floor
     noise_floor = np.mean(fft_magnitude) + 2 * np.std(fft_magnitude)
     max_mag = max(magnitudes)
-    
+
     # Use adaptive threshold: either 30% of peak signal or above noise floor
     threshold = max(max_mag * 0.3, noise_floor, 10.0)
-    
+
     # Determine which bands are active
     band_active = [mag > threshold for mag in magnitudes]
-    
+
     # Convert band activation pattern to symbol (0-15)
     symbol = 0
     for i, active in enumerate(band_active):
         if active:
-            symbol |= (1 << i)  # Set bit i if band i is active
-    
+            symbol |= 1 << i  # Set bit i if band i is active
+
     return symbol
 
 
@@ -837,7 +889,7 @@ def audio_callback(indata, _frames, _time, status):
 
     # Add this decision to our rolling buffer
     receiver_state["rolling_decisions"].append(bit)
-    
+
     # Only make decisions when we have enough overlapping measurements
     decisions_per_bit = receiver_state["decisions_per_bit"]
     if len(receiver_state["rolling_decisions"]) >= decisions_per_bit:
@@ -845,9 +897,11 @@ def audio_callback(indata, _frames, _time, status):
         # Take the most recent decision
         recent_decisions = receiver_state["rolling_decisions"][-decisions_per_bit:]
         voted_bit = recent_decisions[-1] if recent_decisions else None
-        
+
         # Remove old decision to prevent buffer growth
-        receiver_state["rolling_decisions"] = receiver_state["rolling_decisions"][-decisions_per_bit:]
+        receiver_state["rolling_decisions"] = receiver_state["rolling_decisions"][
+            -decisions_per_bit:
+        ]
 
         if receiver_state["state"] == "WAITING_FOR_HANDSHAKE":
             if voted_bit == 2:
@@ -880,7 +934,9 @@ def audio_callback(indata, _frames, _time, status):
             else:
                 # This handles both silence (bit is None) and stray START bits
                 receiver_state["silence_counter"] += 1
-                TIMEOUT_CHUNKS = 20 * decisions_per_bit  # Adjust timeout for higher decision rate
+                TIMEOUT_CHUNKS = (
+                    20 * decisions_per_bit
+                )  # Adjust timeout for higher decision rate
                 if receiver_state["silence_counter"] > TIMEOUT_CHUNKS:
                     process_received_bits()
                     reset_receiver()
@@ -913,45 +969,51 @@ def process_wav_data(wav_source, chunk_size, freq_config):
 
         # Use preamble synchronization instead of rolling windows
         log.info("Processing with preamble synchronization...")
-        
-        bit_duration = chunk_size / SAMPLE_RATE  # Calculate bit duration from chunk size
+
+        bit_duration = (
+            chunk_size / SAMPLE_RATE
+        )  # Calculate bit duration from chunk size
         result = find_preamble_sync(data, bit_duration, SAMPLE_RATE, freq_config)
-        
+
         # Check if we got a valid result (new function returns 3 values)
         if len(result) == 3:
             data_start, samples_per_bit, correlation_strength = result
         else:
             data_start, samples_per_bit = result
             correlation_strength = 0
-        
+
         if data_start is None:
             log.error("Receiver Error: No preamble found in audio data.")
             return
-            
-        log.info(f"Preamble found at sample {data_start}, correlation strength: {correlation_strength:.3f}")
-        
+
+        log.info(
+            f"Preamble found at sample {data_start}, correlation strength: {correlation_strength:.3f}"
+        )
+
         # Decode bits using synchronized sampling
-        decoded_bits = decode_synchronized_bits(data, data_start, samples_per_bit, freq_config)
-        
+        decoded_bits = decode_synchronized_bits(
+            data, data_start, samples_per_bit, freq_config
+        )
+
         if not decoded_bits or len(decoded_bits) < 8:
             log.error("Receiver Error: No valid data bits found.")
             return
-        
+
         # Process the decoded bits
         if len(decoded_bits) >= 8:
             # Split payload and checksum
-            payload_bits = decoded_bits[:-8]  
+            payload_bits = decoded_bits[:-8]
             checksum_bits = decoded_bits[-8:]
-            
+
             if len(payload_bits) % 8 != 0:
                 # Trim to complete bytes
-                payload_bits = payload_bits[:-(len(payload_bits) % 8)]
-            
+                payload_bits = payload_bits[: -(len(payload_bits) % 8)]
+
             if payload_bits:
                 received_bytes = bits_to_bytes(payload_bits)
                 received_checksum = bits_to_bytes(checksum_bits)[0]
                 expected_checksum = calculate_checksum(received_bytes)
-                
+
                 if received_checksum == expected_checksum:
                     green = "\033[92m"
                     reset = "\033[0m"
@@ -959,9 +1021,13 @@ def process_wav_data(wav_source, chunk_size, freq_config):
                     sys.stdout.buffer.write(received_bytes)
                     sys.stdout.flush()
                 else:
-                    log.error(f"Receiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}")
+                    log.error(
+                        f"Receiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}"
+                    )
                     if log.verbose:
-                        log.info(f"Received bytes (possibly corrupted): {received_bytes}")
+                        log.info(
+                            f"Received bytes (possibly corrupted): {received_bytes}"
+                        )
 
     except FileNotFoundError:
         log.error(f"Receiver Error: File not found at '{wav_source}'")
@@ -1042,7 +1108,6 @@ def freq_type(value):
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
-    
     parser = argparse.ArgumentParser(
         description="Transmit or receive data using Frequency-Shift Keying (FSK) modulation over audio.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -1114,11 +1179,11 @@ if __name__ == "__main__":
 
     # Create frequency configuration from CLI arguments
     freq_config = FrequencyConfig(
-        freq0=args.freq0, 
-        freq1=args.freq1, 
-        freq_start=getattr(args, 'freq_start'),
-        freq_low=args.freq0,   # Use freq0 as low band
-        freq_high=args.freq1   # Use freq1 as high band
+        freq0=args.freq0,
+        freq1=args.freq1,
+        freq_start=getattr(args, "freq_start"),
+        freq_low=args.freq0,  # Use freq0 as low band
+        freq_high=args.freq1,  # Use freq1 as high band
     )
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.

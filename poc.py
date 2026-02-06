@@ -15,25 +15,29 @@ import sys
 SAMPLE_RATE = 44100  # Standard CD-quality audio sample rate in Hz
 BIT_DURATION = 0.01  # Duration of each tone in seconds (50ms)
 BIT_DURATION = 0.008
-CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION) # Samples per bit
+CHUNK_SIZE = int(SAMPLE_RATE * BIT_DURATION)  # Samples per bit
 
 FREQ_0 = 196  # g3
-#FREQ_0 = 261.63      # Frequency for bit '0' (C4)
-#FREQ_1 = 392.00      # Frequency for bit '1' (G4)
-FREQ_1 = 1760.00      # A6
+# FREQ_0 = 261.63      # Frequency for bit '0' (C4)
+# FREQ_1 = 392.00      # Frequency for bit '1' (G4)
+FREQ_1 = 1760.00  # A6
 
-FILENAME = "poc_signal.wav" # The file used for communication
+FILENAME = "poc_signal.wav"  # The file used for communication
+
 
 def s2m(seconds):
     if seconds < 60:
         return f"{seconds:.2f} seconds"
     else:
-        return f"{seconds/60:.2f} minutes"
+        return f"{seconds / 60:.2f} minutes"
+
 
 print(f"Chunk size: {CHUNK_SIZE}")
-print(f"Theoretical throughput @ {BIT_DURATION}s per bit ({BIT_DURATION*1000}ms): {1 / BIT_DURATION} bits/s (baud)")
-print(f"Time to send 140b tweet: {s2m(140*8 / (1 / BIT_DURATION))}")
-print(f"Time to send 20KB jpeg: {s2m(20000*8 / (1 / BIT_DURATION))}")
+print(
+    f"Theoretical throughput @ {BIT_DURATION}s per bit ({BIT_DURATION * 1000}ms): {1 / BIT_DURATION} bits/s (baud)"
+)
+print(f"Time to send 140b tweet: {s2m(140 * 8 / (1 / BIT_DURATION))}")
+print(f"Time to send 20KB jpeg: {s2m(20000 * 8 / (1 / BIT_DURATION))}")
 
 # The hardcoded sequence for this PoC
 POC_SEQUENCE = [1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0] * 8
@@ -46,12 +50,12 @@ def generate_tone(frequency, duration, sample_rate):
     num_samples = int(sample_rate * duration)
     t = np.linspace(0, duration, num_samples, False)
     tone = np.sin(frequency * t * 2 * np.pi)
-    
+
     # --- FIX ---
     # The fade length must be shorter than the tone itself to avoid errors.
     # We'll make the fade 10% of the tone's total duration.
     fade_len = int(num_samples * 0.10)
-    
+
     # If the tone is extremely short, the fade length could be 0.
     # In that case, we can just return the tone as-is to avoid errors.
     if fade_len == 0:
@@ -59,11 +63,11 @@ def generate_tone(frequency, duration, sample_rate):
 
     fade_in = np.linspace(0, 1, fade_len)
     fade_out = np.linspace(1, 0, fade_len)
-    
+
     # Apply the fade to the beginning and end of the tone
     tone[:fade_len] *= fade_in
     tone[-fade_len:] *= fade_out
-    
+
     return tone
 
 
@@ -71,46 +75,49 @@ def command_send():
     """Generates the PoC audio sequence and saves it to a file."""
     print("--- Command: send ---")
     print(f"Preparing to generate signal for sequence: {POC_SEQUENCE}")
-    
+
     full_signal = np.array([], dtype=np.float32)
-    
+
     for bit in POC_SEQUENCE:
-        frequency = FREQ_1 if bit == 1 else FREQ_0 # B4 and A4
+        frequency = FREQ_1 if bit == 1 else FREQ_0  # B4 and A4
         tone = generate_tone(frequency, BIT_DURATION, SAMPLE_RATE)
         full_signal = np.concatenate([full_signal, tone])
 
-   # --- ADD NOISE ---
+    # --- ADD NOISE ---
     # This section demonstrates how to add white noise for testing.
     print("Adding noise to the signal...")
-    noise_amplitude = 1.2 # Set to 0.0 for no noise, or e.g., 0.2 for more noise.
-    
+    noise_amplitude = 1.2  # Set to 0.0 for no noise, or e.g., 0.2 for more noise.
+
     # Generate noise and ensure its data type matches the signal's (float32).
     # This prevents subtle data type casting issues.
-    noise = (noise_amplitude * np.random.normal(0, 1, len(full_signal))).astype(np.float32)
-    
+    noise = (noise_amplitude * np.random.normal(0, 1, len(full_signal))).astype(
+        np.float32
+    )
+
     noisy_signal = full_signal + noise
-            
+
     print(f"\nSaving noisy audio signal to '{FILENAME}'...")
-    
+
     # --- IMPORTANT: Use the noisy_signal from now on ---
     # Normalize based on the max amplitude of the *noisy* signal.
     # Add a check to prevent division by zero if the signal is silent.
     max_val = np.max(np.abs(noisy_signal))
     if max_val == 0:
         max_val = 1.0
-    
+
     scaled_signal = np.int16(noisy_signal / max_val * 32767)
-    
-    with wave.open(FILENAME, 'wb') as f:
+
+    with wave.open(FILENAME, "wb") as f:
         f.setnchannels(1)
         f.setsampwidth(2)
         f.setframerate(SAMPLE_RATE)
         f.writeframes(scaled_signal.tobytes())
-    
+
     print("File saved successfully.")
 
 
 # --- Receiver Logic ---
+
 
 def find_dominant_bit(data, sample_rate):
     """Analyzes an audio chunk using FFT to find the dominant bit."""
@@ -118,17 +125,17 @@ def find_dominant_bit(data, sample_rate):
     fft_result = np.fft.rfft(data)
     fft_magnitude = np.abs(fft_result)
     fft_freqs = np.fft.rfftfreq(len(data), 1.0 / sample_rate)
-    
+
     # Find the magnitude at the specific index for FREQ_0 and FREQ_1
     freq0_idx = np.argmin(np.abs(fft_freqs - FREQ_0))
     freq1_idx = np.argmin(np.abs(fft_freqs - FREQ_1))
-    
+
     mag0 = fft_magnitude[freq0_idx]
     mag1 = fft_magnitude[freq1_idx]
-    
+
     # An amplitude threshold is needed to distinguish signal from silence/noise.
     # This value may need tuning based on recording levels.
-    AMPLITUDE_THRESHOLD = 1000 
+    AMPLITUDE_THRESHOLD = 1000
 
     if mag0 > AMPLITUDE_THRESHOLD and mag0 > mag1:
         return 0
@@ -137,16 +144,17 @@ def find_dominant_bit(data, sample_rate):
     else:
         return None
 
+
 def command_recv():
     """Reads a WAV file and decodes the tones back into bits."""
     print("--- Command: recv ---")
     try:
         print(f"Reading audio data from '{FILENAME}'...")
-        with wave.open(FILENAME, 'rb') as f:
+        with wave.open(FILENAME, "rb") as f:
             if f.getframerate() != SAMPLE_RATE:
                 print(f"Error: File sample rate ({f.getframerate()}) does not match.")
                 return
-            
+
             n_frames = f.getnframes()
             audio_bytes = f.readframes(n_frames)
             # Convert byte data to numpy array of 16-bit integers
@@ -156,14 +164,14 @@ def command_recv():
         print(f"Error: Input file '{FILENAME}' not found.")
         print("Please run 'python rs_poc.py send' first to generate it.")
         return
-    
+
     print("Decoding bits from signal...")
     detected_bits = []
-    
+
     # Iterate through the audio data in chunks
     for i in range(0, len(audio_data), CHUNK_SIZE):
-        chunk = audio_data[i:i+CHUNK_SIZE]
-        
+        chunk = audio_data[i : i + CHUNK_SIZE]
+
         if len(chunk) < CHUNK_SIZE:
             continue
 
@@ -174,7 +182,7 @@ def command_recv():
     print("\n--- Decoding Complete ---")
     print(f"Original sequence:   {POC_SEQUENCE}")
     print(f"Detected sequence:   {detected_bits}")
-    
+
     if detected_bits == POC_SEQUENCE:
         print("Success: Detected sequence matches original.")
     else:
@@ -198,4 +206,3 @@ if __name__ == "__main__":
         print(f"Unknown command: '{command}'")
         print("Usage: python rs_poc.py [send|recv]")
         sys.exit(1)
-

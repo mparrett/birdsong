@@ -15,6 +15,7 @@ from scipy import signal
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def create_spectrogram(wav_path, ylim_hz=2500):
     """
     Reads a WAV file and creates a spectrogram image from it.
@@ -46,25 +47,26 @@ def create_spectrogram(wav_path, ylim_hz=2500):
     log_Sxx = np.log1p(Sxx)
 
     # Create the plot
-    plt.figure(figsize=(10, 4)) # Set the figure size
-    
+    plt.figure(figsize=(10, 4))  # Set the figure size
+
     # pcolormesh is used to create a pseudocolor plot of a 2D array
-    plt.pcolormesh(times, frequencies, log_Sxx, shading='gouraud')
+    plt.pcolormesh(times, frequencies, log_Sxx, shading="gouraud")
 
     # Set the labels and title
-    plt.ylabel('Frequency [Hz]')
-    plt.xlabel('Time [sec]')
-    plt.title('Spectrogram')
-    
+    plt.ylabel("Frequency [Hz]")
+    plt.xlabel("Time [sec]")
+    plt.title("Spectrogram")
+
     # Limit the Y-axis to show our 8-band frequencies clearly
     # Default 2500 Hz covers C7 (2093 Hz) with some headroom
-    plt.ylim(0, ylim_hz) 
+    plt.ylim(0, ylim_hz)
 
     # Save the figure to a file
-    output_filename = 'spectrogram.png'
+    output_filename = "spectrogram.png"
     plt.savefig(output_filename)
     print(f"Spectrogram saved to '{output_filename}'")
-    plt.close() # Close the plot to free up memory
+    plt.close()  # Close the plot to free up memory
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -79,17 +81,22 @@ Examples:
 8-band G-C CPFSK frequencies:
   G3: 196 Hz, C4: 262 Hz, G4: 392 Hz, C5: 523 Hz
   G5: 784 Hz, C6: 1047 Hz, G6: 1568 Hz, C7: 2093 Hz
-        """
+        """,
     )
-    
-    parser.add_argument('wav_file', help='Input WAV file path')
-    parser.add_argument('--ylim', type=int, metavar='HZ', 
-                       help='Y-axis upper limit in Hz')
-    parser.add_argument('--ylim-khz', type=float, metavar='KHZ',
-                       help='Y-axis upper limit in kHz (e.g., 2.5 for 2500 Hz)')
-    
+
+    parser.add_argument("wav_file", help="Input WAV file path")
+    parser.add_argument(
+        "--ylim", type=int, metavar="HZ", help="Y-axis upper limit in Hz"
+    )
+    parser.add_argument(
+        "--ylim-khz",
+        type=float,
+        metavar="KHZ",
+        help="Y-axis upper limit in kHz (e.g., 2.5 for 2500 Hz)",
+    )
+
     args = parser.parse_args()
-    
+
     # Determine Y-axis limit
     if args.ylim_khz:
         ylim_hz = int(args.ylim_khz * 1000)
@@ -97,10 +104,10 @@ Examples:
         ylim_hz = args.ylim
     else:
         ylim_hz = 2500  # Default: covers C7 (2093 Hz) with headroom
-    
+
     print(f"Generating spectrogram with Y-axis range: 0-{ylim_hz} Hz")
     create_spectrogram(args.wav_file, ylim_hz)
 
+
 if __name__ == "__main__":
     main()
-

@@ -41,6 +41,7 @@ log = _Logger()
 @dataclass
 class FrequencyConfig:
     """Configuration for FSK frequencies."""
+
     freq0: float = 196.00  # G3 - frequency for bit '0'
     freq1: float = 1760.00  # A6 - frequency for bit '1'
     freq_start: float = 4186.01  # C8 - handshake frequency
@@ -51,7 +52,7 @@ SAMPLE_RATE = 44100
 
 # NOTE: Increased duration for better real-world reliability over the air.
 BIT_DURATION = 0.05
-CHUNK_SIZE = None # Will be set in main after parsing args
+CHUNK_SIZE = None  # Will be set in main after parsing args
 
 # Default frequency configuration
 _default_freq_config = FrequencyConfig()
@@ -134,7 +135,9 @@ def command_send(output_file, bit_duration, freq_config):
     full_signal = np.hstack(
         [
             generate_tone(
-                freq_config.freq0 if bit == 0 else (freq_config.freq1 if bit == 1 else freq_config.freq_start),
+                freq_config.freq0
+                if bit == 0
+                else (freq_config.freq1 if bit == 1 else freq_config.freq_start),
                 bit_duration,
                 SAMPLE_RATE,
             )
@@ -380,26 +383,26 @@ def command_recv(input_file, chunk_size, freq_config):
 # --- Argument Parsing Helper ---
 def get_frequency(note_name):
     """Converts a musical note name (e.g., 'A4') to its frequency in Hz."""
-    NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    
-    note_str = ''.join(filter(str.isalpha, note_name)).upper()
-    sharp_count = note_name.count('#')
-    flat_count = note_name.count('b')
-    note_str += '#' * sharp_count
-    note_str += 'b' * flat_count
-    
-    octave_str = ''.join(filter(str.isdigit, note_name))
+    NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+    note_str = "".join(filter(str.isalpha, note_name)).upper()
+    sharp_count = note_name.count("#")
+    flat_count = note_name.count("b")
+    note_str += "#" * sharp_count
+    note_str += "b" * flat_count
+
+    octave_str = "".join(filter(str.isdigit, note_name))
     if not octave_str:
         raise ValueError("Note name must include an octave number (e.g., 'A4')")
     octave = int(octave_str)
-    
+
     try:
         pos = NOTES.index(note_str)
     except ValueError:
         raise ValueError(f"Unknown note '{note_str}'")
 
     dist = (octave - REFERENCE_OCTAVE) * SEMITONES_PER_OCTAVE + (pos - A_NOTE_INDEX)
-    return 440 * (2**(1/12))**dist
+    return 440 * (2 ** (1 / 12)) ** dist
 
 
 def freq_type(value):
@@ -410,18 +413,19 @@ def freq_type(value):
         try:
             return get_frequency(value)
         except (ValueError, KeyError, IndexError) as e:
-            raise argparse.ArgumentTypeError(f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}")
+            raise argparse.ArgumentTypeError(
+                f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}"
+            )
 
 
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
-    
     parser = argparse.ArgumentParser(
         description="Transmit or receive data using Frequency-Shift Keying (FSK) modulation over audio.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    
+
     # Parent parser for shared arguments
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument(
@@ -430,24 +434,50 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable verbose status messages to stderr.",
     )
-    parent_parser.add_argument('--bit-duration', type=float, default=0.05, help='Duration of each data bit in seconds.')
-    parent_parser.add_argument('--freq0', type=freq_type, default=196.00, help='Frequency in Hz for bit "0" (or a note like "G3").')
-    parent_parser.add_argument('--freq1', type=freq_type, default=1760.00, help='Frequency in Hz for bit "1" (or a note like "A6").')
-    parent_parser.add_argument('--freq-start', type=freq_type, default=4186.01, help='Frequency in Hz for handshake signal (or a note like "C8"). Lower frequencies are less disturbing to pets.')
+    parent_parser.add_argument(
+        "--bit-duration",
+        type=float,
+        default=0.05,
+        help="Duration of each data bit in seconds.",
+    )
+    parent_parser.add_argument(
+        "--freq0",
+        type=freq_type,
+        default=196.00,
+        help='Frequency in Hz for bit "0" (or a note like "G3").',
+    )
+    parent_parser.add_argument(
+        "--freq1",
+        type=freq_type,
+        default=1760.00,
+        help='Frequency in Hz for bit "1" (or a note like "A6").',
+    )
+    parent_parser.add_argument(
+        "--freq-start",
+        type=freq_type,
+        default=4186.01,
+        help='Frequency in Hz for handshake signal (or a note like "C8"). Lower frequencies are less disturbing to pets.',
+    )
 
-    subparsers = parser.add_subparsers(dest='command', required=True, help='Available commands')
+    subparsers = parser.add_subparsers(
+        dest="command", required=True, help="Available commands"
+    )
 
     # Sender command
-    parser_send = subparsers.add_parser('send', help='Transmit data from stdin.', parents=[parent_parser])
+    parser_send = subparsers.add_parser(
+        "send", help="Transmit data from stdin.", parents=[parent_parser]
+    )
     parser_send.add_argument(
         "-o",
         "--output",
         metavar="FILE",
         help="Write audio to a WAV file. Use '-' for stdout.",
     )
-    
+
     # Receiver command
-    parser_recv = subparsers.add_parser('recv', help='Receive data from microphone or file.', parents=[parent_parser])
+    parser_recv = subparsers.add_parser(
+        "recv", help="Receive data from microphone or file.", parents=[parent_parser]
+    )
     parser_recv.add_argument(
         "-i",
         "--input",
@@ -462,9 +492,9 @@ if __name__ == "__main__":
 
     # Create frequency configuration from CLI arguments
     freq_config = FrequencyConfig(
-        freq0=args.freq0, freq1=args.freq1, freq_start=getattr(args, 'freq_start')
+        freq0=args.freq0, freq1=args.freq1, freq_start=getattr(args, "freq_start")
     )
-    
+
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.
     chunk_size = int(SAMPLE_RATE * args.bit_duration)
