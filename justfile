@@ -37,10 +37,9 @@ e2e-spectro:
    mv spectrogram.png spectrogram_10.png
    open spectrogram_3.png
    open spectrogram_10.png
-   cat DEV_NOTES.md|uv run python3 birdsong.py send -o out2.wav 2>/dev/null|uv
-   sox out2.wav -n stat 2>&1| grep Length
-   sox out2.wav -n spectrogram 
-   
+   cat DEV_NOTES.md | uv run python3 birdsong.py send -o out2.wav 2>/dev/null
+   sox out2.wav -n stat 2>&1 | grep Length
+   sox out2.wav -n spectrogram
 
 
 # Alias for send

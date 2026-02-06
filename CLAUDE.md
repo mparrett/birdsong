@@ -1,65 +1,36 @@
 # CLAUDE.md
 
-Birdsong is a Python-based acoustic modem that transmits data using audio signals (FSK modulation).
+Acoustic modem using FSK modulation. Primary implementation: `birdsong.py` (100% reliable, 20 bits/s).
 
-## Bash Commands
+## Commands
 
 ```bash
-# Primary workflow (see justfile for all commands)
-just install                    # Install dependencies
-uv run python birdsong.py send  # Generate audio signal
-uv run python birdsong.py recv  # Decode audio signal
-just e2e-poc                    # End-to-end test: send -> play -> recv
-just format                     # Format code with ruff
-just lint                       # Lint and fix code
+just format && just lint        # ALWAYS run before committing
+just e2e-pipes                  # End-to-end validation (checksums match = working)
+uv run python birdsong.py send -o out.wav  # Generate signal
+uv run python birdsong.py recv -i out.wav  # Decode signal
 ```
-
-## Dependencies
-
-- **Python 3.11+** (specified in `.python-version`)
-- **UV** for package management
-- **NumPy, SciPy** for signal processing
-- **SoundDevice** for real-time audio I/O
-- **Matplotlib** for spectrograms
-- **Ruff** for formatting/linting (dev)
-
-## Core Files
-
-### Production Implementations
-- **`birdsong.py`** - Primary FSK implementation (20 bits/s, 100% reliable, real-time audio I/O)
-- **`poc.py`** - File-based proof-of-concept (196 Hz/1760 Hz, simple send/recv)
-- **`modem.py`** - Class-based implementation (uses numpy but not scipy)
-
-### Research Implementations
-- **`birdsong_fsk_sweeps.py`** - Hybrid dual-mode (FSK + frequency sweeps, 100 bits/s experimental)
-- **`birdsong_8band.py`** - 8-band parallel carrier (highest throughput research)
-- **`birdsong_bitmap.py`** - Spectrogram bitmap encoding
-- Various sweep and multi-band variants (2band, 4band, sweeps_4sym, sweeps_8sym)
-
-### Utilities
-- **`generate_spectrogram.py`** - Visualize signals
-- **`frequency_analysis.py`** - Harmonic interference diagnostics
-- **`debug.py`** - Bit sequence visualization
 
 ## Code Style
 
-- **Functional approach**: Pure functions for signal processing, no side effects
-- **Constants-based config**: Module-level constants for all parameters (SAMPLE_RATE, BIT_DURATION, FREQ_*)
-- **Clear separation**: Signal generation vs I/O logic
-- **Sample rate**: 44.1 kHz baseline across implementations
-- **Windowing**: Always preserve fade-in/fade-out to prevent audio artifacts
+- Pure functions for signal processing
+- Module-level constants: `SAMPLE_RATE`, `BIT_DURATION`, `FREQ_*`
+- 44.1 kHz sample rate
+- IMPORTANT: Always preserve fade-in/fade-out windowing to prevent audio artifacts
 
-## Workflow
+## Key Files
 
-- **Development status**: Currently consolidating research prototypes (in progress)
-- **Testing**: Use `just e2e-*` commands for end-to-end validation
-- **Visualization**: Generate spectrograms to validate signal changes
-- **Always run** `just format` and `just lint` before committing
-- Use `uv run python` to run scripts
+- `birdsong.py` - Production FSK modem
+- `birdsong_fsk_sweeps.py` - Research: hybrid FSK + frequency sweeps (100 bits/s experimental)
+- `birdsong_*band.py` - Research: multi-band parallel carriers
+- `poc.py`, `modem.py` - Alternative implementations
 
-## Important Notes
+## Project Memory
 
-- Production use: **`birdsong.py`** (100% reliable)
-- Research/experimentation: Choose based on technique interest
-- See **README.md** for detailed documentation and performance comparisons
-- Challenge subproject in `/challenge/` directory (separate coursework version)
+Memory files live in `docs/project_notes/`.
+
+**Before proposing changes**: Check `decisions.md` for existing ADRs
+**When encountering errors**: Search `bugs.md` for known solutions
+**When looking up config**: Check `key_facts.md` for ports, URLs, environments
+
+When resolving bugs or making decisions, update the relevant file.
