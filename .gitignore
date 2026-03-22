@@ -1,12 +1,17 @@
 # Python
 __pycache__/**/*
 *.py[cod]
+.ruff_cache/
+.venv/
+.DS_Store
 
 
 # Outputs
 *.wav
 *.png
 out.wav 
+_wav/
+test_out/
 
 # Temp files
 workspace/

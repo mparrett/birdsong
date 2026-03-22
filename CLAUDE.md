@@ -1,11 +1,13 @@
 # CLAUDE.md
 
-Acoustic modem using FSK modulation. Primary implementation: `birdsong.py` (100% reliable, 20 bits/s).
+Acoustic modem using FSK modulation. Primary supported implementation:
+`birdsong.py`.
 
 ## Commands
 
 ```bash
 just format && just lint        # ALWAYS run before committing
+just test                       # Supported automated validation
 just e2e-pipes                  # End-to-end validation (checksums match = working)
 uv run python birdsong.py send -o out.wav  # Generate signal
 uv run python birdsong.py recv -i out.wav  # Decode signal
@@ -21,9 +23,12 @@ uv run python birdsong.py recv -i out.wav  # Decode signal
 ## Key Files
 
 - `birdsong.py` - Production FSK modem
-- `birdsong_fsk_sweeps.py` - Research: hybrid FSK + frequency sweeps (100 bits/s experimental)
-- `birdsong_*band.py` - Research: multi-band parallel carriers
-- `poc.py`, `modem.py` - Alternative implementations
+- `experiments/active/birdsong_fsk_sweeps.py` - Active research: hybrid FSK +
+  frequency sweeps
+- `experiments/active/birdsong_8band.py` - Active research: multiband carrier
+  experiment
+- `tools/` - Spectrogram, analysis, playback, and recording helpers
+- `archive/` - Historical prototypes, challenge material, and preserved notes
 
 ## Project Memory
 
