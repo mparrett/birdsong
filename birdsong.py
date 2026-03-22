@@ -1,13 +1,3 @@
-# birdsong.py
-#
-# Final Version: Transmits data from stdin using real-time audio.
-#
-# Sender Usage:
-#   echo "hello" | python birdsong.py send
-#
-# Receiver Usage:
-#   python birdsong.py recv
-
 import numpy as np
 import sys
 import time
@@ -60,6 +50,9 @@ _default_freq_config = FrequencyConfig()
 
 # Console output constants
 CONSOLE_CLEAR_WIDTH = 50
+HANDSHAKE_SYMBOL = 2
+AMPLITUDE_THRESHOLD = 2.0
+TIMEOUT_CHUNKS = 20
 
 # Sine wave generation
 REFERENCE_OCTAVE = 4
@@ -164,11 +157,11 @@ def command_send(output_file, bit_duration, freq_config):
     payload_bytes = sys.stdin.buffer.read()
     if not payload_bytes:
         log.error("Sender: No input data received. Exiting.")
-        return
+        return 1
 
     log.info(f"Sender: Read {len(payload_bytes)} bytes from stdin.")
 
-    handshake_bits = [2, 2]
+    handshake_bits = [HANDSHAKE_SYMBOL, HANDSHAKE_SYMBOL]
     payload_bits = bytes_to_bits(payload_bytes)
     checksum_val = calculate_checksum(payload_bytes)
     checksum_bits = bytes_to_bits(bytes([checksum_val]))
@@ -199,6 +192,7 @@ def command_send(output_file, bit_duration, freq_config):
                 sys.stdout.buffer.write(buffer.getvalue())
             except Exception as e:
                 log.error(f"Error writing WAV to stdout: {e}")
+                return 1
         else:
             log.info(f"Sender: Writing audio to {output_file}...")
             try:
@@ -206,11 +200,17 @@ def command_send(output_file, bit_duration, freq_config):
                 log.info("Sender: File written successfully.")
             except Exception as e:
                 log.error(f"Error writing WAV file: {e}")
+                return 1
     else:
         log.info("Sender: Playing audio signal...")
-        sd.play(full_signal, SAMPLE_RATE)
-        sd.wait()
+        try:
+            sd.play(full_signal, SAMPLE_RATE)
+            sd.wait()
+        except Exception as e:
+            log.error(f"Error playing audio signal: {e}")
+            return 1
         log.info("Sender: Playback complete.")
+    return 0
 
 
 # --- Receiver Logic ---
@@ -222,6 +222,8 @@ receiver_state = {
     "handshake_counter": 0,
     "silence_counter": 0,
     "freq_config": None,  # Will be set when receiver starts
+    "had_success": False,
+    "had_error": False,
 }
 
 
@@ -232,7 +234,8 @@ def process_received_bits():
         print(" " * CONSOLE_CLEAR_WIDTH, end="\r")
     if not receiver_state["all_bits"] or len(receiver_state["all_bits"]) < 8:
         log.error("\nReceiver Error: No data payload found.")
-        return
+        receiver_state["had_error"] = True
+        return False
 
     payload_bits = receiver_state["all_bits"][:-8]
     checksum_bits = receiver_state["all_bits"][-8:]
@@ -247,17 +250,20 @@ def process_received_bits():
         log.info(f"\n{green}Receiver: Checksum VALID.{reset}")
         sys.stdout.buffer.write(received_bytes)
         sys.stdout.flush()
+        receiver_state["had_success"] = True
+        return True
     else:
         log.error(
             f"\nReceiver Error: Checksum mismatch! Expected {expected_checksum}, got {received_checksum}"
         )
         if log.verbose:
             log.info(f"Received bytes (possibly corrupted): {received_bytes}")
+        receiver_state["had_error"] = True
+        return False
 
 
-def reset_receiver():
-    """Resets the state machine to listen for a new message."""
-    freq_config = receiver_state["freq_config"]  # Preserve freq_config
+def begin_receive_session(freq_config):
+    """Initializes receiver state for a new recv command."""
     receiver_state.update(
         {
             "state": "WAITING_FOR_HANDSHAKE",
@@ -265,6 +271,26 @@ def reset_receiver():
             "handshake_counter": 0,
             "silence_counter": 0,
             "freq_config": freq_config,
+            "had_success": False,
+            "had_error": False,
+        }
+    )
+
+
+def reset_receiver():
+    """Resets the state machine to listen for a new message."""
+    freq_config = receiver_state["freq_config"]  # Preserve freq_config
+    had_success = receiver_state["had_success"]
+    had_error = receiver_state["had_error"]
+    receiver_state.update(
+        {
+            "state": "WAITING_FOR_HANDSHAKE",
+            "all_bits": [],
+            "handshake_counter": 0,
+            "silence_counter": 0,
+            "freq_config": freq_config,
+            "had_success": had_success,
+            "had_error": had_error,
         }
     )
     log.info("\nReceiver: Ready for next transmission.")
@@ -288,11 +314,8 @@ def find_dominant_bit(data, sample_rate, freq_config):
         log_msg = f"Mags: Start={mag_start:5.2f}, F0={mag0:5.2f}, F1={mag1:5.2f}"
         log.info(log_msg, end="\r")
 
-    # This is important for tuning
-    AMPLITUDE_THRESHOLD = 2.0
-
     if mag_start > AMPLITUDE_THRESHOLD and mag_start > mag1 and mag_start > mag0:
-        return 2
+        return HANDSHAKE_SYMBOL
     elif mag1 > AMPLITUDE_THRESHOLD and mag1 > mag0:
         return 1
     elif mag0 > AMPLITUDE_THRESHOLD:
@@ -311,7 +334,7 @@ def audio_callback(indata, frames, time, status):
     )
 
     if receiver_state["state"] == "WAITING_FOR_HANDSHAKE":
-        if bit == 2:
+        if bit == HANDSHAKE_SYMBOL:
             receiver_state["handshake_counter"] += 1
             if receiver_state["handshake_counter"] >= 2:
                 if sys.stdout.isatty():
@@ -341,7 +364,6 @@ def audio_callback(indata, frames, time, status):
         else:
             # This handles both silence (bit is None) and stray START bits
             receiver_state["silence_counter"] += 1
-            TIMEOUT_CHUNKS = 20
             if receiver_state["silence_counter"] > TIMEOUT_CHUNKS:
                 process_received_bits()
                 reset_receiver()
@@ -363,7 +385,7 @@ def process_wav_data(wav_source, chunk_size):
             log.error(
                 f"Fatal Receiver Error: WAV file has sample rate {rate}, but script requires {SAMPLE_RATE}."
             )
-            return
+            return 1
 
         data = normalize_audio_samples(data)
 
@@ -381,33 +403,36 @@ def process_wav_data(wav_source, chunk_size):
             process_received_bits()
             reset_receiver()
 
+        if receiver_state["had_success"] and not receiver_state["had_error"]:
+            return 0
+
+        if not receiver_state["had_success"] and not receiver_state["had_error"]:
+            log.error("Receiver Error: No transmission detected.")
+            return 1
+
+        return 1
+
     except FileNotFoundError:
         log.error(f"Receiver Error: File not found at '{wav_source}'")
+        return 1
     except Exception as e:
         log.error(f"An error occurred while processing the WAV data: {e}")
+        return 1
 
 
 def command_recv(input_file, chunk_size, freq_config):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
-    receiver_state.update(
-        {
-            "state": "WAITING_FOR_HANDSHAKE",
-            "all_bits": [],
-            "handshake_counter": 0,
-            "silence_counter": 0,
-            "freq_config": freq_config,
-        }
-    )
+    begin_receive_session(freq_config)
     # Handle explicit stdin ('-') or implicit pipe (no tty)
     if (input_file and input_file == "-") or (
         not input_file and not sys.stdin.isatty()
     ):
         log.info("Receiver: Reading from stdin pipe...")
-        process_wav_data(sys.stdin.buffer, chunk_size)
+        return process_wav_data(sys.stdin.buffer, chunk_size)
     # Handle a file path
     elif input_file:
         log.info(f"Receiver: Reading from '{input_file}'...")
-        process_wav_data(input_file, chunk_size)
+        return process_wav_data(input_file, chunk_size)
     # Default to microphone
     else:
         log.info("Receiver: Listening to microphone... Press Ctrl+C to stop.")
@@ -423,8 +448,11 @@ def command_recv(input_file, chunk_size, freq_config):
                     time.sleep(1)
         except KeyboardInterrupt:
             log.info("\nReceiver: Stopped by user.")
+            return 0
         except Exception as e:
             log.error(f"An error occurred: {e}")
+            return 1
+    return 0
 
 
 # --- Argument Parsing Helper ---
@@ -457,6 +485,20 @@ def freq_type(value):
             raise argparse.ArgumentTypeError(
                 f"Invalid frequency or note '{value}'. Use a number (e.g., 440.0) or a note (e.g., 'A4'). Details: {e}"
             )
+
+
+def compute_chunk_size(bit_duration):
+    """Converts a bit duration to a valid chunk size."""
+    if bit_duration <= 0:
+        raise ValueError("Bit duration must be positive.")
+
+    chunk_size = int(round(SAMPLE_RATE * bit_duration))
+    if chunk_size < 1:
+        raise ValueError(
+            "Bit duration is too small for the sample rate; it must produce at least one sample per bit."
+        )
+
+    return chunk_size
 
 
 # --- Main Execution Block ---
@@ -538,21 +580,26 @@ if __name__ == "__main__":
 
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.
-    if args.bit_duration <= 0:
-        log.error("Bit duration must be positive.")
+    try:
+        chunk_size = compute_chunk_size(args.bit_duration)
+    except ValueError as exc:
+        log.error(str(exc))
         sys.exit(1)
-    chunk_size = int(SAMPLE_RATE * args.bit_duration)
 
     # --- Execute command ---
     if args.command == "send":
-        command_send(
-            output_file=args.output,
-            bit_duration=args.bit_duration,
-            freq_config=freq_config,
+        sys.exit(
+            command_send(
+                output_file=args.output,
+                bit_duration=args.bit_duration,
+                freq_config=freq_config,
+            )
         )
     elif args.command == "recv":
-        command_recv(
-            input_file=args.input, chunk_size=chunk_size, freq_config=freq_config
+        sys.exit(
+            command_recv(
+                input_file=args.input, chunk_size=chunk_size, freq_config=freq_config
+            )
         )
     else:
         # This case is technically unreachable due to `required=True`

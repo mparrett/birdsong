@@ -30,9 +30,31 @@ Common repo commands:
 ```bash
 just check
 just test
+just demo
 just e2e
 just e2e-pipes
 ```
+
+## Demo App
+
+There is a small Bottle-based demo app for quickly seeing the modem in action
+after cloning:
+
+```bash
+just demo
+```
+
+By default it serves on `http://127.0.0.1:8080/`.
+
+It gives you:
+
+- a one-click canned demo
+- text-to-audio generation through the real `birdsong.py` CLI
+- WAV upload + decode
+- inline audio playback, spectrograms, and compact bit previews
+
+The app is intentionally scrappy and file-backed. It uses the existing CLI path
+for encode/decode rather than introducing a new application layer.
 
 ## Active Experiments
 
@@ -52,6 +74,7 @@ branches, the initial `poc.py`, and preserved coursework/challenge material.
 
 Utilities that help inspect or audition signals live in `tools/`:
 
+- Bottle demo app
 - spectrogram generation
 - harmonic/crosstalk analysis
 - note playback

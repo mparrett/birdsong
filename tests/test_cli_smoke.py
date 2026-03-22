@@ -13,12 +13,12 @@ FIXTURE = ROOT / "docs/project_notes/restructure_plan.md"
 
 
 class CliSmokeTests(unittest.TestCase):
-    def run_script(self, relative_path, *args, input_bytes=None):
+    def run_script(self, relative_path, *args, input_bytes=None, check=True):
         return subprocess.run(
             [PYTHON, str(ROOT / relative_path), *args],
             input=input_bytes,
             capture_output=True,
-            check=True,
+            check=check,
             cwd=ROOT,
         )
 
@@ -50,6 +50,55 @@ class CliSmokeTests(unittest.TestCase):
             received = self.run_script("birdsong.py", "recv", "-i", str(stereo_path))
 
         self.assertEqual(payload, received.stdout)
+
+    def test_birdsong_send_rejects_empty_input(self):
+        result = self.run_script(
+            "birdsong.py",
+            "send",
+            "-o",
+            "-",
+            input_bytes=b"",
+            check=False,
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(b"No input data received", result.stderr)
+
+    def test_birdsong_rejects_too_small_bit_duration(self):
+        result = self.run_script(
+            "birdsong.py",
+            "send",
+            "--bit-duration",
+            "1e-9",
+            "-o",
+            "-",
+            input_bytes=b"hi",
+            check=False,
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(b"too small", result.stderr)
+
+    def test_birdsong_recv_rejects_wrong_sample_rate(self):
+        payload = b"wrong rate\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            valid_path = pathlib.Path(tmpdir) / "valid.wav"
+            wrong_rate_path = pathlib.Path(tmpdir) / "wrong-rate.wav"
+            self.run_script("birdsong.py", "send", "-o", str(valid_path), input_bytes=payload)
+
+            sample_rate, samples = wavfile.read(valid_path)
+            wavfile.write(wrong_rate_path, sample_rate // 2, samples)
+
+            result = self.run_script(
+                "birdsong.py",
+                "recv",
+                "-i",
+                str(wrong_rate_path),
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn(b"sample rate", result.stderr)
 
     def test_fsk_sweeps_file_round_trip(self):
         payload = b"abc"
