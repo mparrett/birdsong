@@ -16,6 +16,7 @@ import argparse
 from scipy.io import wavfile
 import io
 from dataclasses import dataclass
+import re
 
 
 class _Logger:
@@ -64,6 +65,25 @@ CONSOLE_CLEAR_WIDTH = 50
 REFERENCE_OCTAVE = 4
 SEMITONES_PER_OCTAVE = 12
 A_NOTE_INDEX = 9
+NOTE_INDEX = {
+    "C": 0,
+    "C#": 1,
+    "DB": 1,
+    "D": 2,
+    "D#": 3,
+    "EB": 3,
+    "E": 4,
+    "F": 5,
+    "F#": 6,
+    "GB": 6,
+    "G": 7,
+    "G#": 8,
+    "AB": 8,
+    "A": 9,
+    "A#": 10,
+    "BB": 10,
+    "B": 11,
+}
 
 # --- Helper Functions ---
 
@@ -94,6 +114,30 @@ def bits_to_bytes(bits):
 def calculate_checksum(byte_data):
     """Calculates a simple 8-bit checksum."""
     return sum(byte_data) % 256
+
+
+def normalize_audio_samples(data):
+    """Converts common WAV sample formats to mono float32 in [-1, 1]."""
+    data = np.asarray(data)
+    source_dtype = data.dtype
+
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+
+    if np.issubdtype(source_dtype, np.floating):
+        normalized = data.astype(np.float32)
+    elif np.issubdtype(source_dtype, np.signedinteger):
+        info = np.iinfo(source_dtype)
+        scale = max(abs(info.min), info.max)
+        normalized = data.astype(np.float32) / scale
+    elif np.issubdtype(source_dtype, np.unsignedinteger):
+        info = np.iinfo(source_dtype)
+        midpoint = (info.max + 1) / 2.0
+        normalized = (data.astype(np.float32) - midpoint) / midpoint
+    else:
+        raise ValueError(f"Unsupported WAV data type '{source_dtype}'")
+
+    return np.clip(normalized, -1.0, 1.0).astype(np.float32, copy=False)
 
 
 # --- Sender Logic ---
@@ -321,12 +365,7 @@ def process_wav_data(wav_source, chunk_size):
             )
             return
 
-        if data.dtype == np.int16:
-            data = data.astype(np.float32) / 32767.0
-        elif data.dtype != np.float32:
-            log.error(
-                f"Receiver Error: Unsupported WAV data type '{data.dtype}'. Trying to proceed."
-            )
+        data = normalize_audio_samples(data)
 
         # Process the file chunk by chunk
         num_samples = len(data)
@@ -350,7 +389,15 @@ def process_wav_data(wav_source, chunk_size):
 
 def command_recv(input_file, chunk_size, freq_config):
     """Listens, decodes a stream, or processes a WAV file from a file or stdin."""
-    receiver_state["freq_config"] = freq_config
+    receiver_state.update(
+        {
+            "state": "WAITING_FOR_HANDSHAKE",
+            "all_bits": [],
+            "handshake_counter": 0,
+            "silence_counter": 0,
+            "freq_config": freq_config,
+        }
+    )
     # Handle explicit stdin ('-') or implicit pipe (no tty)
     if (input_file and input_file == "-") or (
         not input_file and not sys.stdin.isatty()
@@ -383,24 +430,18 @@ def command_recv(input_file, chunk_size, freq_config):
 # --- Argument Parsing Helper ---
 def get_frequency(note_name):
     """Converts a musical note name (e.g., 'A4') to its frequency in Hz."""
-    NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-
-    note_str = "".join(filter(str.isalpha, note_name)).upper()
-    sharp_count = note_name.count("#")
-    flat_count = note_name.count("b")
-    note_str += "#" * sharp_count
-    note_str += "b" * flat_count
-
-    octave_str = "".join(filter(str.isdigit, note_name))
-    if not octave_str:
+    match = re.fullmatch(r"\s*([A-Ga-g])([#b]?)(-?\d+)\s*", note_name)
+    if not match:
         raise ValueError("Note name must include an octave number (e.g., 'A4')")
+
+    note_letter, accidental, octave_str = match.groups()
+    note_str = f"{note_letter.upper()}{accidental.upper()}"
     octave = int(octave_str)
 
-    try:
-        pos = NOTES.index(note_str)
-    except ValueError:
+    if note_str not in NOTE_INDEX:
         raise ValueError(f"Unknown note '{note_str}'")
 
+    pos = NOTE_INDEX[note_str]
     dist = (octave - REFERENCE_OCTAVE) * SEMITONES_PER_OCTAVE + (pos - A_NOTE_INDEX)
     return 440 * (2 ** (1 / 12)) ** dist
 
@@ -497,6 +538,9 @@ if __name__ == "__main__":
 
     # We must declare CHUNK_SIZE as global to modify it.
     # It's calculated here so it can use the user-provided BIT_DURATION.
+    if args.bit_duration <= 0:
+        log.error("Bit duration must be positive.")
+        sys.exit(1)
     chunk_size = int(SAMPLE_RATE * args.bit_duration)
 
     # --- Execute command ---
