@@ -18,6 +18,9 @@ demo *args:
 test:
     uv run python3 -m unittest discover -s tests -p 'test_*.py'
 
+bitmap-v2-test:
+    uv run python3 -m unittest tests/test_bitmap_v2.py -v
+
 e2e:
     uv run python3 birdsong.py send -o /tmp/birdsong-e2e.wav < docs/project_notes/restructure_plan.md
     uv run python3 birdsong.py recv -i /tmp/birdsong-e2e.wav > /tmp/birdsong-e2e.out
