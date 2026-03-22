@@ -4,6 +4,9 @@ import sys
 import tempfile
 import unittest
 
+import numpy as np
+from scipy.io import wavfile
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PYTHON = sys.executable
 FIXTURE = ROOT / "docs/project_notes/restructure_plan.md"
@@ -31,6 +34,21 @@ class CliSmokeTests(unittest.TestCase):
         payload = b"pipe loopback\n"
         sent = self.run_script("birdsong.py", "send", "-o", "-", input_bytes=payload)
         received = self.run_script("birdsong.py", "recv", "-i", "-", input_bytes=sent.stdout)
+        self.assertEqual(payload, received.stdout)
+
+    def test_birdsong_recv_handles_stereo_wav(self):
+        payload = b"stereo wav\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mono_path = pathlib.Path(tmpdir) / "mono.wav"
+            stereo_path = pathlib.Path(tmpdir) / "stereo.wav"
+            self.run_script("birdsong.py", "send", "-o", str(mono_path), input_bytes=payload)
+
+            sample_rate, samples = wavfile.read(mono_path)
+            stereo_samples = np.column_stack([samples, samples])
+            wavfile.write(stereo_path, sample_rate, stereo_samples)
+
+            received = self.run_script("birdsong.py", "recv", "-i", str(stereo_path))
+
         self.assertEqual(payload, received.stdout)
 
     def test_fsk_sweeps_file_round_trip(self):
