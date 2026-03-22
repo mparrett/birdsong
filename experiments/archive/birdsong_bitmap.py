@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-birdsong_bitmap.py - Spectrogram Bitmap Transmission
+birdsong_bitmap.py - Archived spectrogram bitmap prototype
+
+Archived status:
+- preserved as a concept prototype, not an active experiment
+- current text loopback does not decode cleanly
 
 Revolutionary approach: Treat the spectrogram as a 2D canvas where data is "drawn"
 as patterns of frequency-time blocks, then transmitted as audio that recreates
@@ -16,8 +20,8 @@ Encoding: Each grid cell [freq][time] = 1 bit
 - Bit 0: Silence (no energy in that freq/time cell)
 
 Usage:
-    python birdsong_bitmap.py send --pattern checkerboard
-    python birdsong_bitmap.py recv
+    python experiments/archive/birdsong_bitmap.py send --pattern checkerboard
+    python experiments/archive/birdsong_bitmap.py recv
 """
 
 import numpy as np

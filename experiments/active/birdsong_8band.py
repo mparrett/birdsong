@@ -1,12 +1,11 @@
-# birdsong.py
+# birdsong_8band.py
 #
-# Final Version: Transmits data from stdin using real-time audio.
+# Active experiment: multiband carrier branch.
+# Short file loopback is smoke-tested, but this is not the supported root modem.
 #
-# Sender Usage:
-#   echo "hello" | python birdsong.py send
-#
-# Receiver Usage:
-#   python birdsong.py recv
+# Usage from repo root:
+#   echo "hello" | python experiments/active/birdsong_8band.py send -o message.wav
+#   python experiments/active/birdsong_8band.py recv -i message.wav
 
 import numpy as np
 import sys

@@ -1,15 +1,12 @@
 # birdsong_fsk_sweeps.py
 #
-# Hybrid Version: Dual-mode acoustic modem with FSK and frequency sweep encoding.
-# Combines the reliability of traditional FSK with the 5x performance of biomimetic sweeps.
+# Active experiment: hybrid FSK + frequency sweeps.
+# The file-based FSK path is smoke-tested; sweep mode is exploratory.
 #
-# FSK Mode Usage (20 bits/s, reliable):
-#   echo "hello" | python birdsong_fsk_sweeps.py send
-#   python birdsong_fsk_sweeps.py recv
-#
-# Sweep Mode Usage (100 bits/s, 5x faster):
-#   echo "hello" | python birdsong_fsk_sweeps.py send --sweep-mode
-#   python birdsong_fsk_sweeps.py recv --sweep-mode
+# Usage from repo root:
+#   echo "hello" | python experiments/active/birdsong_fsk_sweeps.py send
+#   python experiments/active/birdsong_fsk_sweeps.py recv -i message.wav
+#   echo "hello" | python experiments/active/birdsong_fsk_sweeps.py send --sweep-mode
 
 import numpy as np
 import sys
