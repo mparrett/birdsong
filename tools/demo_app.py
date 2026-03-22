@@ -287,6 +287,52 @@ PAGE_TEMPLATE = r"""
       background: rgba(194, 87, 45, 0.18);
       color: var(--accent-dark);
     }
+    .bit.handshake {
+      background: rgba(43, 106, 65, 0.18);
+      color: var(--good);
+    }
+    .bit.checksum {
+      background: rgba(90, 70, 160, 0.18);
+      color: #5a46a0;
+    }
+    .protocol-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+    .protocol-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .protocol-legend .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .byte-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      align-items: center;
+    }
+    .byte-group .bits {
+      gap: 2px;
+    }
+    .byte-label {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .protocol-groups {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+    }
     .asset-grid {
       display: grid;
       gap: 14px;
@@ -456,6 +502,21 @@ PAGE_TEMPLATE = r"""
           <div class="section-block">
             <h3>Payload Bits</h3>
             <div class="bits">{{!result['bit_html']}}</div>
+            % if result.get('protocol_html'):
+            <details>
+              <summary>Go Deeper</summary>
+              <div class="section-block" style="margin-top: 12px;">
+                <div class="protocol-legend">
+                  <span><span class="swatch" style="background: rgba(43, 106, 65, 0.18);"></span> Handshake (2 tones at {{options['freq_start']}} Hz)</span>
+                  <span><span class="swatch" style="background: rgba(194, 87, 45, 0.18);"></span> Payload (1 = {{options['freq1']}} Hz)</span>
+                  <span><span class="swatch" style="background: rgba(31, 31, 26, 0.08);"></span> Payload (0 = {{options['freq0']}} Hz)</span>
+                  <span><span class="swatch" style="background: rgba(90, 70, 160, 0.18);"></span> Checksum (sum of all payload bytes mod 256)</span>
+                </div>
+                <div class="protocol-groups">{{!result['protocol_html']}}</div>
+                <p>Each bit is one FSK tone lasting {{options['bit_duration']}}s. No framing header, no error correction &mdash; just handshake, payload, and a single checksum byte.</p>
+              </div>
+            </details>
+            % end
           </div>
           % end
 
@@ -605,6 +666,47 @@ def make_bit_html(payload: bytes, *, limit: int = 96) -> str:
     return "".join(cells)
 
 
+def make_protocol_html(payload: bytes) -> str:
+    """Render the full protocol structure: handshake + payload bytes + checksum."""
+    checksum_val = birdsong.calculate_checksum(payload)
+    parts = []
+
+    # Handshake
+    parts.append('<div class="byte-group">')
+    parts.append('<div class="bits">')
+    parts.append('<span class="bit handshake">H</span>')
+    parts.append('<span class="bit handshake">H</span>')
+    parts.append("</div>")
+    parts.append('<span class="byte-label">handshake</span>')
+    parts.append("</div>")
+
+    # Payload bytes
+    for b in payload:
+        bits = [(b >> i) & 1 for i in range(7, -1, -1)]
+        parts.append('<div class="byte-group">')
+        parts.append('<div class="bits">')
+        for bit in bits:
+            cls = "bit one" if bit else "bit"
+            parts.append(f'<span class="{cls}">{bit}</span>')
+        parts.append("</div>")
+        ch = chr(b) if 32 <= b < 127 else f"0x{b:02x}"
+        parts.append(f'<span class="byte-label">{ch}</span>')
+        parts.append("</div>")
+
+    # Checksum byte
+    checksum_bits = [(checksum_val >> i) & 1 for i in range(7, -1, -1)]
+    parts.append('<div class="byte-group">')
+    parts.append('<div class="bits">')
+    for bit in checksum_bits:
+        cls = "bit checksum one" if bit else "bit checksum"
+        parts.append(f'<span class="{cls}">{bit}</span>')
+    parts.append("</div>")
+    parts.append(f'<span class="byte-label">chk 0x{checksum_val:02x}</span>')
+    parts.append("</div>")
+
+    return "".join(parts)
+
+
 def format_text_preview(data: bytes) -> str:
     return data.decode("utf-8", errors="replace") if data else ""
 
@@ -659,6 +761,7 @@ def build_common_result(
         "summary": summary,
         "decoded_text": decoded_text,
         "bit_html": make_bit_html(payload) if payload else "",
+        "protocol_html": make_protocol_html(payload) if payload else "",
         "stderr": stderr.strip(),
         "ok": ok,
         "cli": cli,
