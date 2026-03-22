@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-birdsong_sweeps_4sym.py - 4-Symbol Frequency Sweep "Tonal" Transmission (Baseline)
+birdsong_sweeps_4sym.py - Archived 4-symbol sweep baseline
+
+Archived status:
+- preserved as the baseline standalone sweep branch
+- superseded in practice by the hybrid sweep experiment
 
 Inspired by tonal languages and natural communication patterns where
 frequency direction encodes meaning. Like Mandarin tones or bird song
@@ -16,8 +20,8 @@ Baseline version: 2 bits per symbol, ~25 symbols/sec = 50 bits/s
 Advantages: Natural patterns, no frequency interference, robust detection
 
 Usage:
-    python birdsong_sweeps.py send --text "Hi"
-    python birdsong_sweeps.py recv
+    python experiments/archive/birdsong_sweeps_4sym.py send --text "Hi"
+    python experiments/archive/birdsong_sweeps_4sym.py recv
 """
 
 import numpy as np

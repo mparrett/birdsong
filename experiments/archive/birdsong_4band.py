@@ -1,12 +1,7 @@
-# birdsong.py
+# birdsong_4band.py
 #
-# Final Version: Transmits data from stdin using real-time audio.
-#
-# Sender Usage:
-#   echo "hello" | python birdsong.py send
-#
-# Receiver Usage:
-#   python birdsong.py recv
+# Archived experiment: intermediate multiband branch superseded by the 8-band
+# variant. Preserved for comparison, not maintained as a current path.
 
 import numpy as np
 import sys

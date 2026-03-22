@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-birdsong_sweeps_8sym.py - 8-Symbol Frequency Sweep Transmission
+birdsong_sweeps_8sym.py - Archived 8-symbol sweep experiment
+
+Archived status:
+- preserved as a higher-throughput sweep branch
+- not currently smoke-tested or promoted to the active set
 
 Extended tonal encoding system with 8 symbols (3 bits each) for 3x higher data rates:
 
