@@ -9,6 +9,14 @@ supported root surface.
   smoke-tested; the code is large and intentionally isolated from the supported
   root modem.
 
+- `birdsong_bitmap_v2.py`: spectrogram bitmap modem with sync preamble,
+  calibration-based thresholds, and length/checksum framing. Passes all
+  in-memory and WAV round-trips. See `bitmap_v2_results/` for robustness
+  characterization.
+- `bitmap_v2_results/`: robustness sweep harness and findings. Tests white
+  noise, band-limited noise, clipping, sample offset, rolloff, and combined
+  channel corruption.
+
 Guideline:
 
 - Keep these visible only while they represent distinct and still-interesting
