@@ -12,6 +12,9 @@ recv *args:
 run *args:
     uv run python3 birdsong.py send {{args}}
 
+demo *args:
+    ./tools/demo_app.py {{args}}
+
 test:
     uv run python3 -m unittest discover -s tests -p 'test_*.py'
 

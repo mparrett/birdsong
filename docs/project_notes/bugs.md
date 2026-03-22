@@ -31,3 +31,20 @@ archived historical branch until it receives a dedicated repair pass.
 
 **Prevention**: Require loopback smoke tests before classifying an experiment as
 active.
+
+## 2026-03-22 - CLI Accepted Invalid Input With Zero Exit Status
+
+**Issue**: The supported CLI could report errors such as empty stdin, invalid
+WAV sample rate, or an effectively zero-sized bit chunk while still exiting
+successfully.
+
+**Root Cause**: The command paths mostly logged errors inline but did not carry
+those failures back to the process exit code, and bit-duration validation only
+checked for positive values rather than at least one sample per bit.
+
+**Solution**: Make `send` and file-based `recv` return non-zero on invalid
+input paths, and validate `--bit-duration` by converting it to a real chunk
+size before command execution.
+
+**Prevention**: Add CLI smoke tests for expected failure cases, not only happy
+path loopbacks.

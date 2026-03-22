@@ -6,11 +6,13 @@ Acoustic modem using FSK modulation. Primary supported implementation:
 ## Commands
 
 ```bash
-just format && just lint        # ALWAYS run before committing
+just format                     # Format the repo
+just check                      # Lint without modifying files
 just test                       # Supported automated validation
-just e2e-pipes                  # End-to-end validation (checksums match = working)
-uv run python birdsong.py send -o out.wav  # Generate signal
-uv run python birdsong.py recv -i out.wav  # Decode signal
+just e2e-pipes                  # Primary end-to-end validation
+just demo                       # Local Bottle demo app
+uv run python3 birdsong.py send -o out.wav  # Generate signal
+uv run python3 birdsong.py recv -i out.wav  # Decode signal
 ```
 
 ## Code Style

@@ -59,6 +59,10 @@ class BirdsongCoreTests(unittest.TestCase):
         self.assertAlmostEqual(0.0, float(tone[-1]), places=6)
         self.assertGreater(float(np.max(np.abs(tone))), 0.5)
 
+    def test_compute_chunk_size_rejects_too_small_values(self):
+        with self.assertRaisesRegex(ValueError, "too small"):
+            birdsong.compute_chunk_size(1e-9)
+
 
 if __name__ == "__main__":
     unittest.main()
