@@ -3,6 +3,8 @@
 Acoustic modem experiments centered on a small, file-and-pipe-friendly FSK
 implementation in `birdsong.py`.
 
+![Spectrogram of a Birdsong transmission](modem_spectrogram.png)
+
 ## Supported Core
 
 `birdsong.py` is the supported entrypoint. It sends bytes from stdin, writes WAV
@@ -46,6 +48,8 @@ just demo
 
 By default it serves on `http://127.0.0.1:8080/`.
 
+![Demo app screenshot](demo_app.png)
+
 It gives you:
 
 - a one-click canned demo
@@ -64,11 +68,17 @@ supported product surface:
 - `experiments/active/birdsong_fsk_sweeps.py`
 - `experiments/active/birdsong_8band.py`
 
+![Frequency sweep modulation spectrogram](hi_sweeps_spectrogram.png)
+
 ## Archived History
 
 Older or currently unsupported branches live in `experiments/archive/` and
 `archive/`. This includes the bitmap prototype, earlier sweep and multiband
 branches, the initial `poc.py`, and preserved coursework/challenge material.
+
+The bitmap path remains archived on purpose. Its current prototype does not
+round-trip reliably enough for incremental fixes; see
+`docs/project_notes/bitmap_rebuild_ticket.md` for the rebuild scope.
 
 ## Tools
 
