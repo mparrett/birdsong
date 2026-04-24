@@ -10,7 +10,8 @@ just format                     # Format the repo
 just check                      # Lint without modifying files
 just test                       # Supported automated validation
 just e2e-pipes                  # Primary end-to-end validation
-just demo                       # Local Bottle demo app
+just demo                       # Local Bottle demo app (port 8333)
+just demo --host 0.0.0.0        # LAN-accessible demo
 uv run python3 birdsong.py send -o out.wav  # Generate signal
 uv run python3 birdsong.py recv -i out.wav  # Decode signal
 ```

@@ -43,10 +43,16 @@ There is a small Bottle-based demo app for quickly seeing the modem in action
 after cloning:
 
 ```bash
-just demo
+just demo                  # localhost only
+just demo --host 0.0.0.0   # LAN-accessible
 ```
 
-By default it serves on `http://127.0.0.1:8080/`.
+By default it serves on `http://127.0.0.1:8333/`.
+
+**LAN testing note:** The `/spectro-preview` page uses the microphone via
+`getUserMedia`, which Chrome blocks on plain HTTP from non-localhost origins. To
+enable it over LAN, visit `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+and add your LAN URL (e.g. `http://192.168.1.x:8333`).
 
 ![Demo app screenshot](demo_app.png)
 
@@ -56,6 +62,7 @@ It gives you:
 - text-to-audio generation through the real `birdsong.py` CLI
 - WAV upload + decode
 - inline audio playback, spectrograms, and compact bit previews
+- a companion browser-only spectrogram preview at `/spectro-preview`
 
 The app is intentionally scrappy and file-backed. It uses the existing CLI path
 for encode/decode rather than introducing a new application layer.

@@ -194,7 +194,8 @@ PAGE_TEMPLATE = r"""
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
-    button {
+    button,
+    .button-link {
       border: 0;
       border-radius: 999px;
       padding: 11px 18px;
@@ -203,8 +204,13 @@ PAGE_TEMPLATE = r"""
       font: inherit;
       font-weight: 600;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
     }
-    button.secondary {
+    button.secondary,
+    .button-link.secondary {
       background: rgba(31, 31, 26, 0.08);
       color: var(--ink);
     }
@@ -430,6 +436,7 @@ PAGE_TEMPLATE = r"""
         <form method="post" action="/demo">
           <button type="submit">Show Me How It Works</button>
         </form>
+        <a class="button-link secondary" href="/spectro-preview">Open Spectro Preview</a>
         <div class="pill">Try <code>hello birdsong</code>, upload a WAV, or compare the CLI below.</div>
       </div>
     </section>
@@ -591,6 +598,684 @@ PAGE_TEMPLATE = r"""
 </html>
 """
 
+SPECTRO_PREVIEW_TEMPLATE = r"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Birdsong Spectro Preview</title>
+  <style>
+    :root {
+      --bg: #f5efe2;
+      --ink: #1f1f1a;
+      --muted: #6c675b;
+      --panel: rgba(255, 252, 244, 0.94);
+      --line: rgba(78, 64, 44, 0.16);
+      --accent: #c2572d;
+      --accent-dark: #8e3214;
+      --good: #2b6a41;
+      --blue: #315f9a;
+      --shadow: 0 14px 40px rgba(56, 42, 24, 0.12);
+      --mono: "SFMono-Regular", "Menlo", "Consolas", monospace;
+      --sans: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at top left, rgba(194, 87, 45, 0.14), transparent 32%),
+        linear-gradient(180deg, #fbf7ee 0%, var(--bg) 100%);
+    }
+
+    a {
+      color: var(--accent-dark);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 42px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .phone {
+      max-width: 460px;
+      width: 100%;
+      min-height: min(820px, calc(100vh - 112px));
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .spectrogram-wrap {
+      position: relative;
+      height: 238px;
+      background: #eee9df;
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    .spectrogram-label {
+      position: absolute;
+      left: 12px;
+      top: 10px;
+      font-size: 12px;
+      color: rgba(31, 31, 26, 0.72);
+      background: rgba(255, 252, 244, 0.82);
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(78, 64, 44, 0.12);
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      font-size: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .status-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--blue);
+      opacity: 0.88;
+    }
+
+    .tip {
+      margin: 0;
+      padding: 16px 18px 32px;
+      background: #eef3f2;
+      color: #283733;
+      font-size: 16px;
+      line-height: 1.38;
+      border-bottom: 1px solid var(--line);
+      min-height: 94px;
+    }
+
+    .bird-list {
+      flex: 1;
+      overflow: auto;
+    }
+
+    .bird {
+      display: grid;
+      grid-template-columns: 88px 1fr 48px;
+      gap: 14px;
+      align-items: center;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      min-height: 78px;
+    }
+
+    .bird.highlight {
+      background: #fff7a8;
+    }
+
+    .thumb {
+      width: 88px;
+      height: 60px;
+      border-radius: 7px;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(43, 106, 65, 0.28), rgba(49, 95, 154, 0.28)),
+        linear-gradient(180deg, #fbf7ee, #d9d2c3);
+      display: grid;
+      place-items: center;
+      color: rgba(31, 31, 26, 0.72);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .name {
+      font-size: 21px;
+      line-height: 1.05;
+      margin-bottom: 4px;
+    }
+
+    .highlight .name {
+      font-weight: 800;
+    }
+
+    .latin {
+      font-size: 15px;
+      font-style: italic;
+      color: var(--muted);
+    }
+
+    .score {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: #444;
+      font-size: 14px;
+    }
+
+    .controls {
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 14px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.55);
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.25;
+    }
+
+    .record {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 0;
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+      cursor: pointer;
+    }
+
+    .record:not(.running)::before {
+      content: "";
+      display: inline-block;
+      width: 29px;
+      height: 29px;
+      border-radius: 50%;
+      background: white;
+      vertical-align: -4px;
+    }
+
+    .record.running::before {
+      content: "";
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      background: white;
+      vertical-align: -3px;
+    }
+
+    .timer {
+      font-size: 18px;
+      font-weight: 800;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      background: #fff;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(78, 64, 44, 0.12);
+    }
+
+    .nav {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 10px 0 12px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+      color: #8a8d8f;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .nav div:first-child {
+      color: var(--good);
+      font-weight: 700;
+    }
+
+    .nav-icon {
+      display: block;
+      width: 26px;
+      height: 20px;
+      margin: 0 auto 4px;
+      font-family: var(--mono);
+      font-size: 15px;
+      line-height: 20px;
+    }
+
+    .notes {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .pill {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.84rem;
+      background: rgba(31, 31, 26, 0.06);
+      color: var(--muted);
+    }
+
+    h1, h2, p { margin: 0; }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 0.95;
+      max-width: 10ch;
+    }
+
+    h2 {
+      font-size: 1.12rem;
+      line-height: 1.15;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.92em;
+      color: var(--accent-dark);
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .phone {
+        min-height: 760px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .shell {
+        padding: 18px 10px 28px;
+      }
+
+      .phone {
+        border-radius: 18px;
+      }
+
+      .spectrogram-wrap {
+        height: 196px;
+      }
+
+      .bird {
+        grid-template-columns: 78px 1fr 42px;
+        gap: 10px;
+      }
+
+      .thumb {
+        width: 78px;
+        height: 56px;
+      }
+
+      .name {
+        font-size: 19px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <a href="/">Birdsong Demo</a>
+      <span>Browser-only companion preview</span>
+    </div>
+
+    <section class="layout">
+      <div class="phone">
+        <div class="spectrogram-wrap">
+          <canvas id="spectrogram"></canvas>
+          <div class="spectrogram-label">Live microphone spectrogram</div>
+        </div>
+
+        <div class="controls">
+          <div class="status" id="status">Ready. Works best over HTTPS or localhost.</div>
+          <button class="record" id="record" aria-label="Start or stop microphone preview"></button>
+          <div class="timer" id="timer">00:00</div>
+        </div>
+
+        <div class="section-title">
+          <span>Best suggestions</span>
+          <span class="status-dot"></span>
+        </div>
+
+        <p class="tip" id="tip">Press record and allow microphone access. This preview uses simple spectral heuristics, not a trained bird model.</p>
+
+        <section class="bird-list" id="birdList"></section>
+
+        <nav class="nav" aria-label="Preview tabs">
+          <div><span class="nav-icon">ID</span>Identify</div>
+          <div><span class="nav-icon">EX</span>Explore</div>
+          <div><span class="nav-icon">LL</span>Life List</div>
+          <div><span class="nav-icon">ST</span>Settings</div>
+        </nav>
+      </div>
+
+      <aside class="notes">
+        <article class="card">
+          <div class="pill">Companion concept</div>
+          <h1>Spectrogram-first bird ID preview.</h1>
+          <p>
+            This is a self-contained browser sketch derived from the downloaded
+            prototype. It is intentionally separate from the supported acoustic
+            modem path, which still lives on the main demo and calls
+            <code>birdsong.py</code>.
+          </p>
+        </article>
+
+        <article class="card">
+          <h2>What is real here</h2>
+          <p>
+            The microphone capture and scrolling spectrogram use the Web Audio
+            API. The ranked suggestions are only deterministic band-energy
+            heuristics so the UI can be tested without model assets or network
+            calls.
+          </p>
+        </article>
+
+        <article class="card">
+          <h2>Integration boundary</h2>
+          <p>
+            Served by <code>just demo</code> at <code>/spectro-preview</code>.
+            No files are written, no modem constants are changed, and no
+            unsupported classifier is added to the production surface.
+          </p>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const birds = [
+      {
+        id: "steller",
+        common: "Steller's Jay",
+        latin: "Cyanocitta stelleri",
+        tag: "SJ",
+        tip: "Listen for harsh, scratchy calls. Often loud and conspicuous in conifers."
+      },
+      {
+        id: "goose",
+        common: "Canada Goose",
+        latin: "Branta canadensis",
+        tag: "CG",
+        tip: "Low honks and repeated calls. Often heard from open water or overhead flocks."
+      },
+      {
+        id: "wren",
+        common: "Bewick's Wren",
+        latin: "Thryomanes bewickii",
+        tag: "BW",
+        tip: "Listen for bright, varied phrases from shrubs, hedges, and brushy edges."
+      },
+      {
+        id: "junco",
+        common: "Dark-eyed Junco",
+        latin: "Junco hyemalis",
+        tag: "DJ",
+        tip: "Look for those white tail feathers as they fly away."
+      },
+      {
+        id: "finch",
+        common: "House Finch",
+        latin: "Haemorhous mexicanus",
+        tag: "HF",
+        tip: "Listen for a lively, warbling song, often near houses, wires, and feeders."
+      },
+      {
+        id: "sparrow",
+        common: "Song Sparrow",
+        latin: "Melospiza melodia",
+        tag: "SS",
+        tip: "Song often starts with repeated notes, then moves into a buzzy phrase."
+      }
+    ];
+
+    const birdList = document.getElementById("birdList");
+    const tipEl = document.getElementById("tip");
+    const statusEl = document.getElementById("status");
+    const timerEl = document.getElementById("timer");
+    const button = document.getElementById("record");
+    const canvas = document.getElementById("spectrogram");
+    const ctx = canvas.getContext("2d");
+
+    let audioContext = null;
+    let analyser = null;
+    let source = null;
+    let stream = null;
+    let running = false;
+    let startedAt = 0;
+    let raf = null;
+    let freqData = null;
+    let scoreState = new Map();
+
+    function renderBirds(scores = new Map()) {
+      const sorted = [...birds].sort((a, b) => (scores.get(b.id) || 0) - (scores.get(a.id) || 0));
+      const topId = sorted[0]?.id;
+      const top = sorted[0];
+
+      if (running && top) {
+        tipEl.textContent = top.tip;
+      }
+
+      birdList.innerHTML = sorted.map((bird) => {
+        const pct = Math.round((scores.get(bird.id) || 0) * 100);
+        const highlighted = bird.id === topId && running ? "highlight" : "";
+        const score = running ? `${pct}%` : "";
+        return `
+          <div class="bird ${highlighted}">
+            <div class="thumb">${bird.tag}</div>
+            <div>
+              <div class="name">${bird.common}</div>
+              <div class="latin">${bird.latin}</div>
+            </div>
+            <div class="score">${score}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      ctx.fillStyle = "#eee9df";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function bandEnergy(data, sampleRate, lowHz, highHz) {
+      const nyquist = sampleRate / 2;
+      const start = Math.max(0, Math.floor((lowHz / nyquist) * data.length));
+      const end = Math.min(data.length - 1, Math.ceil((highHz / nyquist) * data.length));
+      let sum = 0;
+      let count = 0;
+      for (let i = start; i <= end; i++) {
+        sum += data[i] / 255;
+        count++;
+      }
+      return count ? sum / count : 0;
+    }
+
+    function updateClassifier(data) {
+      const sr = audioContext.sampleRate;
+      const low = bandEnergy(data, sr, 200, 900);
+      const mid = bandEnergy(data, sr, 900, 2600);
+      const high = bandEnergy(data, sr, 2600, 7000);
+      const veryHigh = bandEnergy(data, sr, 7000, 11000);
+      const wide = (low + mid + high) / 3;
+
+      const raw = new Map([
+        ["goose", low * 1.2],
+        ["finch", mid * 1.05 + high * 0.25],
+        ["wren", high * 1.1 + veryHigh * 0.45],
+        ["steller", wide * 0.9 + low * 0.2],
+        ["junco", high * 0.85 + mid * 0.35],
+        ["sparrow", mid * 0.8 + high * 0.45]
+      ]);
+
+      const max = Math.max(...raw.values(), 0.001);
+      for (const [key, value] of raw) {
+        const normalized = Math.min(0.99, Math.max(0, value / max));
+        const previous = scoreState.get(key) || 0;
+        scoreState.set(key, previous * 0.85 + normalized * 0.15);
+      }
+    }
+
+    function drawSpectrogram() {
+      if (!running || !analyser) return;
+
+      analyser.getByteFrequencyData(freqData);
+      updateClassifier(freqData);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const sliceW = Math.max(1, Math.floor((window.devicePixelRatio || 1) * 2));
+
+      const imageData = ctx.getImageData(sliceW, 0, w - sliceW, h);
+      ctx.putImageData(imageData, 0, 0);
+
+      for (let y = 0; y < h; y++) {
+        const bin = Math.floor((1 - y / h) * freqData.length);
+        const value = freqData[Math.max(0, Math.min(freqData.length - 1, bin))];
+        const warmth = value / 255;
+        const red = Math.floor(238 - value * 0.25);
+        const green = Math.floor(233 - value * 0.58);
+        const blue = Math.floor(223 - value * 0.82 + warmth * 36);
+        ctx.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+        ctx.fillRect(w - sliceW, y, sliceW, 1);
+      }
+
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+      const ss = String(elapsed % 60).padStart(2, "0");
+      timerEl.textContent = `${mm}:${ss}`;
+
+      renderBirds(scoreState);
+      raf = requestAnimationFrame(drawSpectrogram);
+    }
+
+    async function start() {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        statusEl.textContent = "Microphone requires HTTPS or localhost. In Chrome, visit chrome://flags/#unsafely-treat-insecure-origin-as-secure and add this origin.";
+        return;
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
+
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.05;
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      source.connect(analyser);
+
+      scoreState = new Map(birds.map((bird) => [bird.id, 0]));
+      running = true;
+      startedAt = Date.now();
+      button.classList.add("running");
+      statusEl.textContent = `Listening at ${Math.round(audioContext.sampleRate / 1000)} kHz. Heuristic preview only.`;
+      drawSpectrogram();
+    }
+
+    function stop() {
+      running = false;
+      button.classList.remove("running");
+      if (raf) cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (audioContext) audioContext.close();
+      stream = null;
+      audioContext = null;
+      analyser = null;
+      source = null;
+      timerEl.textContent = "00:00";
+      statusEl.textContent = "Stopped.";
+      tipEl.textContent = "Press record and allow microphone access. This preview uses simple spectral heuristics, not a trained bird model.";
+    }
+
+    button.addEventListener("click", async () => {
+      try {
+        if (running) {
+          stop();
+        } else {
+          await start();
+        }
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = err?.message || "Could not start microphone.";
+      }
+    });
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    renderBirds(new Map([
+      ["steller", 0.22],
+      ["goose", 0.19],
+      ["wren", 0.18],
+      ["junco", 0.51],
+      ["finch", 0.17],
+      ["sparrow", 0.15]
+    ]));
+  </script>
+</body>
+</html>
+"""
+
 app = Bottle()
 
 
@@ -645,7 +1330,9 @@ def load_run_state(run_id: str) -> tuple[dict[str, object] | None, str, dict[str
     return result, message, options
 
 
-def run_cli(command: list[str], *, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+def run_cli(
+    command: list[str], *, input_bytes: bytes | None = None
+) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
         command,
         input=input_bytes,
@@ -731,7 +1418,9 @@ def create_spectrogram(wav_path: Path, output_path: Path) -> None:
 
 def wav_metadata(wav_path: Path) -> dict[str, str]:
     sample_rate, samples = wavfile.read(wav_path)
-    sample_count = len(samples) if getattr(samples, "ndim", 1) == 1 else samples.shape[0]
+    sample_count = (
+        len(samples) if getattr(samples, "ndim", 1) == 1 else samples.shape[0]
+    )
     duration = sample_count / sample_rate
     return {
         "sample_rate": f"{sample_rate} Hz",
@@ -771,7 +1460,9 @@ def build_common_result(
     }
 
 
-def encode_result(message: str, options: dict[str, str], *, canned: bool = False) -> tuple[dict[str, object], Path]:
+def encode_result(
+    message: str, options: dict[str, str], *, canned: bool = False
+) -> tuple[dict[str, object], Path]:
     payload = message.encode("utf-8")
     run_id, run_dir = make_run_dir("encode")
     wav_path = run_dir / "encoded.wav"
@@ -849,7 +1540,9 @@ def encode_result(message: str, options: dict[str, str], *, canned: bool = False
     )
 
 
-def decode_result(upload_name: str, upload_bytes: bytes) -> tuple[dict[str, object], Path]:
+def decode_result(
+    upload_name: str, upload_bytes: bytes
+) -> tuple[dict[str, object], Path]:
     run_id, run_dir = make_run_dir("decode")
     wav_path = run_dir / safe_name(upload_name)
     spectrogram_path = run_dir / "spectrogram.png"
@@ -910,7 +1603,15 @@ def format_cli_block(command: list[str], *, stdin_hint: str | None = None) -> st
     return f"{stdin_hint} | \\\n{command_block}"
 
 
-def build_error_result(*, title: str, kind: str, summary: str, stderr: str = "", cli: str = "", payload: bytes = b"") -> dict[str, object]:
+def build_error_result(
+    *,
+    title: str,
+    kind: str,
+    summary: str,
+    stderr: str = "",
+    cli: str = "",
+    payload: bytes = b"",
+) -> dict[str, object]:
     return {
         "title": title,
         "kind": kind,
@@ -922,11 +1623,20 @@ def build_error_result(*, title: str, kind: str, summary: str, stderr: str = "",
         "cli": cli,
         "audio_url": "",
         "spectrogram_url": "",
-        "metadata": {"byte_count": str(len(payload)), "duration": "-", "sample_rate": "-"},
+        "metadata": {
+            "byte_count": str(len(payload)),
+            "duration": "-",
+            "sample_rate": "-",
+        },
     }
 
 
-def render_page(*, result: dict[str, object] | None = None, message: str = DEFAULT_TEXT, options: dict[str, str] | None = None) -> str:
+def render_page(
+    *,
+    result: dict[str, object] | None = None,
+    message: str = DEFAULT_TEXT,
+    options: dict[str, str] | None = None,
+) -> str:
     merged_options = dict(DEFAULT_OPTIONS)
     if options:
         merged_options.update(options)
@@ -949,10 +1659,18 @@ def index() -> str:
     return render_page(result=result, message=message, options=options)
 
 
+@app.get("/spectro-preview")
+def spectro_preview() -> str:
+    response.content_type = "text/html; charset=utf-8"
+    return SPECTRO_PREVIEW_TEMPLATE
+
+
 @app.post("/demo")
 def canned_demo() -> str:
     try:
-        result, run_dir = encode_result(DEFAULT_TEXT, dict(DEFAULT_OPTIONS), canned=True)
+        result, run_dir = encode_result(
+            DEFAULT_TEXT, dict(DEFAULT_OPTIONS), canned=True
+        )
     except Exception as exc:  # pragma: no cover - defensive UI path
         _, run_dir = make_run_dir("error")
         result = build_error_result(
@@ -961,17 +1679,23 @@ def canned_demo() -> str:
             summary="The demo app hit an unexpected error while generating the canned transmission.",
             stderr=str(exc),
         )
-    write_run_state(run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS))
+    write_run_state(
+        run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS)
+    )
     redirect(f"/?run={run_dir.name}#result")
 
 
 @app.post("/encode")
 def encode() -> str:
     options = {
-        "bit_duration": request.forms.get("bit_duration", DEFAULT_OPTIONS["bit_duration"]).strip(),
+        "bit_duration": request.forms.get(
+            "bit_duration", DEFAULT_OPTIONS["bit_duration"]
+        ).strip(),
         "freq0": request.forms.get("freq0", DEFAULT_OPTIONS["freq0"]).strip(),
         "freq1": request.forms.get("freq1", DEFAULT_OPTIONS["freq1"]).strip(),
-        "freq_start": request.forms.get("freq_start", DEFAULT_OPTIONS["freq_start"]).strip(),
+        "freq_start": request.forms.get(
+            "freq_start", DEFAULT_OPTIONS["freq_start"]
+        ).strip(),
     }
     message = request.forms.get("message", DEFAULT_TEXT)
     try:
@@ -1000,7 +1724,9 @@ def decode() -> str:
             summary="No WAV file was uploaded.",
             cli="Upload a WAV file first.",
         )
-        write_run_state(run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS))
+        write_run_state(
+            run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS)
+        )
         redirect(f"/?run={run_dir.name}#result")
 
     upload_bytes = upload.file.read()
@@ -1014,7 +1740,9 @@ def decode() -> str:
             summary="The uploaded file could not be processed as a supported WAV artifact.",
             stderr=str(exc),
         )
-    write_run_state(run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS))
+    write_run_state(
+        run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS)
+    )
     redirect(f"/?run={run_dir.name}#result")
 
 
@@ -1024,10 +1752,21 @@ def artifacts(run_id: str, filename: str):
 
 
 def main() -> None:
-    host = os.environ.get("BIRDSONG_DEMO_HOST", "127.0.0.1")
-    port = int(os.environ.get("BIRDSONG_DEMO_PORT", "8080"))
-    print(f"Birdsong demo on http://{host}:{port}")
-    app.run(host=host, port=port, debug=False, reloader=False)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Birdsong demo server")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("BIRDSONG_DEMO_HOST", "127.0.0.1"),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("BIRDSONG_DEMO_PORT", "8333")),
+    )
+    args = parser.parse_args()
+    print(f"Birdsong demo on http://{args.host}:{args.port}")
+    app.run(host=args.host, port=args.port, debug=False, reloader=False)
 
 
 if __name__ == "__main__":
