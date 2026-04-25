@@ -437,7 +437,6 @@ PAGE_TEMPLATE = r"""
         <form method="post" action="/demo">
           <button type="submit">Show Me How It Works</button>
         </form>
-        <a class="button-link secondary" href="/spectro-preview">Open Spectro Preview</a>
         <div class="pill">Try <code>hello birdsong</code>, upload a WAV, or compare the CLI below.</div>
       </div>
     </section>
@@ -571,6 +570,10 @@ PAGE_TEMPLATE = r"""
       </div>
       % end
     </section>
+
+    <p style="text-align: center; margin-top: 32px; color: var(--muted); font-size: 0.92rem;">
+      Also available: <a href="/spectro-preview">Spectro Preview</a> &mdash; live microphone spectrogram with bird ID heuristics
+    </p>
   </div>
   <script>
     (() => {
@@ -1114,6 +1117,8 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
     let analyser = null;
     let source = null;
     let stream = null;
+    let recorder = null;
+    let recordedChunks = [];
     let running = false;
     let startedAt = 0;
     let raf = null;
@@ -1315,6 +1320,13 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       freqData = new Uint8Array(analyser.frequencyBinCount);
       source.connect(analyser);
 
+      recordedChunks = [];
+      recorder = new MediaRecorder(stream);
+      recorder.addEventListener("dataavailable", (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      });
+      recorder.start();
+
       scoreState = new Map(birds.map((bird) => [bird.id, 0]));
       running = true;
       startedAt = Date.now();
@@ -1327,6 +1339,12 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       running = false;
       button.classList.remove("running");
       if (raf) cancelAnimationFrame(raf);
+
+      if (recorder && recorder.state !== "inactive") {
+        recorder.addEventListener("stop", uploadCapture);
+        recorder.stop();
+      }
+
       if (stream) stream.getTracks().forEach((track) => track.stop());
       if (audioContext) audioContext.close();
       stream = null;
@@ -1334,8 +1352,32 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       analyser = null;
       source = null;
       timerEl.textContent = "00:00";
-      statusEl.textContent = "Stopped.";
+      statusEl.textContent = "Saving capture...";
       tipEl.textContent = "Press record and allow microphone access. This preview uses simple spectral heuristics, not a trained bird model.";
+    }
+
+    async function uploadCapture() {
+      if (recordedChunks.length === 0) {
+        statusEl.textContent = "Stopped. Nothing to save.";
+        return;
+      }
+      const blob = new Blob(recordedChunks, { type: recordedChunks[0].type || "audio/webm" });
+      const form = new FormData();
+      form.append("audio", blob, "recording.webm");
+
+      try {
+        const res = await fetch("/spectro-preview/capture", { method: "POST", body: form });
+        const data = await res.json();
+        statusEl.textContent = `Saved: ${data.id}`;
+        if (data.spectrogram_url) {
+          statusEl.textContent += " (spectrogram generated)";
+        }
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Stopped. Upload failed.";
+      }
+      recordedChunks = [];
+      recorder = null;
     }
 
     button.addEventListener("click", async () => {
@@ -1834,6 +1876,48 @@ def decode() -> str:
         run_dir, result=result, message=DEFAULT_TEXT, options=dict(DEFAULT_OPTIONS)
     )
     redirect(f"/?run={run_dir.name}#result")
+
+
+@app.post("/spectro-preview/capture")
+def spectro_capture():
+    upload = request.files.get("audio")
+    if upload is None:
+        response.status = 400
+        return {"error": "No audio file"}
+
+    run_id, run_dir = make_run_dir("capture")
+    ext = Path(upload.filename or "recording.webm").suffix or ".webm"
+    raw_path = run_dir / f"recording{ext}"
+    raw_path.write_bytes(upload.file.read())
+
+    wav_path = run_dir / "recording.wav"
+    converted = False
+    if shutil.which("ffmpeg"):
+        conv = subprocess.run(
+            ["ffmpeg", "-i", str(raw_path), "-ar", "44100", "-ac", "1", str(wav_path)],
+            capture_output=True,
+        )
+        converted = conv.returncode == 0
+
+    spectrogram_path = run_dir / "spectrogram.png"
+    if converted and wav_path.exists():
+        try:
+            create_spectrogram(wav_path, spectrogram_path)
+        except Exception:
+            spectrogram_path = None
+    else:
+        wav_path = raw_path
+        spectrogram_path = None
+
+    result = {
+        "id": run_id,
+        "audio_url": f"/artifacts/{run_id}/{wav_path.name}",
+    }
+    if spectrogram_path and spectrogram_path.exists():
+        result["spectrogram_url"] = f"/artifacts/{run_id}/{spectrogram_path.name}"
+
+    response.content_type = "application/json"
+    return result
 
 
 @app.get("/artifacts/<run_id>/<filename:path>")
