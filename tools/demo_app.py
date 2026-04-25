@@ -423,10 +423,12 @@ PAGE_TEMPLATE = r"""
 </head>
 <body>
   <div class="shell">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 0 4px;">
+      <a href="/spectro-preview" style="font-size: 0.92rem;">Spectro Preview &rarr;</a>
+      <div class="pill">Bottle demo over the real CLI</div>
+    </div>
+
     <section class="hero">
-      <div>
-        <div class="pill">Bottle demo over the real CLI</div>
-      </div>
       <h1>Birdsong in one browser tab.</h1>
       <p class="lede">
         This page shells out to the real <code>birdsong.py</code> encode/decode commands,
@@ -570,10 +572,6 @@ PAGE_TEMPLATE = r"""
       </div>
       % end
     </section>
-
-    <p style="text-align: center; margin-top: 32px; color: var(--muted); font-size: 0.92rem;">
-      Also available: <a href="/spectro-preview">Spectro Preview</a> &mdash; live microphone spectrogram with bird ID heuristics
-    </p>
   </div>
   <script>
     (() => {
