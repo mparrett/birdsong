@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 birdsong = importlib.import_module("birdsong")
 
 try:
+    import bottle
     from bottle import Bottle, redirect, request, response, static_file, template
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised only when missing dep
     raise SystemExit(
@@ -692,16 +693,32 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       image-rendering: pixelated;
     }
 
-    .spectrogram-label {
+    .spectrogram-controls {
       position: absolute;
       left: 12px;
       top: 10px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .spectrogram-label {
       font-size: 12px;
       color: rgba(31, 31, 26, 0.72);
       background: rgba(255, 252, 244, 0.82);
       padding: 4px 8px;
       border-radius: 999px;
       border: 1px solid rgba(78, 64, 44, 0.12);
+    }
+
+    .spectrogram-label.active {
+      background: rgba(43, 106, 65, 0.18);
+      color: var(--good);
+      border-color: rgba(43, 106, 65, 0.25);
+    }
+
+    .spectrogram-label[role="button"] {
+      cursor: pointer;
     }
 
     .section-title {
@@ -973,7 +990,10 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       <div class="phone">
         <div class="spectrogram-wrap">
           <canvas id="spectrogram"></canvas>
-          <div class="spectrogram-label">Live microphone spectrogram</div>
+          <div class="spectrogram-controls">
+            <div class="spectrogram-label" id="btn-linear" role="button" tabindex="0">Linear</div>
+            <div class="spectrogram-label active" id="btn-mel" role="button" tabindex="0">Mel</div>
+          </div>
         </div>
 
         <div class="controls">
@@ -1087,6 +1107,9 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
     const canvas = document.getElementById("spectrogram");
     const ctx = canvas.getContext("2d");
 
+    const btnLinear = document.getElementById("btn-linear");
+    const btnMel = document.getElementById("btn-mel");
+
     let audioContext = null;
     let analyser = null;
     let source = null;
@@ -1096,6 +1119,65 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
     let raf = null;
     let freqData = null;
     let scoreState = new Map();
+    let useMel = true;
+    let melBinMap = null;
+
+    // Magma-inspired color map (256 entries)
+    const magmaLUT = buildMagmaLUT();
+
+    function buildMagmaLUT() {
+      const stops = [
+        [0.00, 0, 0, 4],
+        [0.15, 30, 10, 60],
+        [0.30, 80, 18, 105],
+        [0.45, 140, 30, 110],
+        [0.60, 195, 55, 85],
+        [0.75, 235, 100, 50],
+        [0.90, 252, 175, 45],
+        [1.00, 252, 253, 140],
+      ];
+      const lut = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        const t = i / 255;
+        let lo = stops[0], hi = stops[stops.length - 1];
+        for (let s = 0; s < stops.length - 1; s++) {
+          if (t >= stops[s][0] && t <= stops[s + 1][0]) {
+            lo = stops[s]; hi = stops[s + 1]; break;
+          }
+        }
+        const f = (t - lo[0]) / (hi[0] - lo[0]);
+        lut[i] = [
+          Math.round(lo[1] + f * (hi[1] - lo[1])),
+          Math.round(lo[2] + f * (hi[2] - lo[2])),
+          Math.round(lo[3] + f * (hi[3] - lo[3])),
+        ];
+      }
+      return lut;
+    }
+
+    function hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700); }
+
+    function buildMelBinMap(binCount, sampleRate, canvasHeight) {
+      const nyquist = sampleRate / 2;
+      const maxMel = hzToMel(nyquist);
+      const map = new Int32Array(canvasHeight);
+      for (let y = 0; y < canvasHeight; y++) {
+        const melVal = (1 - y / canvasHeight) * maxMel;
+        const hz = 700 * (Math.pow(10, melVal / 2595) - 1);
+        const bin = Math.round((hz / nyquist) * binCount);
+        map[y] = Math.max(0, Math.min(binCount - 1, bin));
+      }
+      return map;
+    }
+
+    function setMode(mel) {
+      useMel = mel;
+      btnMel.classList.toggle("active", mel);
+      btnLinear.classList.toggle("active", !mel);
+    }
+
+    btnMel.addEventListener("click", () => setMode(true));
+    btnLinear.addEventListener("click", () => setMode(false));
 
     function renderBirds(scores = new Map()) {
       const sorted = [...birds].sort((a, b) => (scores.get(b.id) || 0) - (scores.get(a.id) || 0));
@@ -1183,14 +1265,22 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       const imageData = ctx.getImageData(sliceW, 0, w - sliceW, h);
       ctx.putImageData(imageData, 0, 0);
 
+      if (useMel && (!melBinMap || melBinMap.length !== h)) {
+        melBinMap = buildMelBinMap(freqData.length, audioContext.sampleRate, h);
+      }
+
       for (let y = 0; y < h; y++) {
-        const bin = Math.floor((1 - y / h) * freqData.length);
-        const value = freqData[Math.max(0, Math.min(freqData.length - 1, bin))];
-        const warmth = value / 255;
-        const red = Math.floor(238 - value * 0.25);
-        const green = Math.floor(233 - value * 0.58);
-        const blue = Math.floor(223 - value * 0.82 + warmth * 36);
-        ctx.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+        const bin = useMel
+          ? melBinMap[y]
+          : Math.max(0, Math.min(freqData.length - 1, Math.floor((1 - y / h) * freqData.length)));
+        const value = freqData[bin];
+        if (useMel) {
+          const [r, g, b] = magmaLUT[value];
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+        } else {
+          const warmth = value / 255;
+          ctx.fillStyle = `rgb(${Math.floor(238 - value * 0.25)},${Math.floor(233 - value * 0.58)},${Math.floor(223 - value * 0.82 + warmth * 36)})`;
+        }
         ctx.fillRect(w - sliceW, y, sliceW, 1);
       }
 
@@ -1261,7 +1351,7 @@ SPECTRO_PREVIEW_TEMPLATE = r"""
       }
     });
 
-    window.addEventListener("resize", resizeCanvas);
+    window.addEventListener("resize", () => { resizeCanvas(); melBinMap = null; });
     resizeCanvas();
     renderBirds(new Map([
       ["steller", 0.22],
@@ -1751,6 +1841,41 @@ def artifacts(run_id: str, filename: str):
     return static_file(filename, root=str(ARTIFACT_ROOT / run_id))
 
 
+class SSLServer(bottle.ServerAdapter):
+    """WSGIRefServer with TLS support via a self-signed cert."""
+
+    def run(self, handler):
+        import ssl
+        from wsgiref.simple_server import make_server
+
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(self.options["certfile"], self.options["keyfile"])
+        srv = make_server(self.host, self.port, handler)
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+        srv.serve_forever()
+
+
+def ensure_self_signed_cert() -> tuple[str, str]:
+    cert_dir = ARTIFACT_ROOT / "ssl"
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    certfile = cert_dir / "cert.pem"
+    keyfile = cert_dir / "key.pem"
+    if certfile.exists() and keyfile.exists():
+        return str(certfile), str(keyfile)
+
+    subprocess.run(
+        [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048",
+            "-keyout", str(keyfile), "-out", str(certfile),
+            "-days", "365", "-nodes",
+            "-subj", "/CN=birdsong-demo",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return str(certfile), str(keyfile)
+
+
 def main() -> None:
     import argparse
 
@@ -1764,9 +1889,20 @@ def main() -> None:
         type=int,
         default=int(os.environ.get("BIRDSONG_DEMO_PORT", "8333")),
     )
+    parser.add_argument("--ssl", action="store_true", help="Serve over HTTPS with a self-signed cert")
     args = parser.parse_args()
-    print(f"Birdsong demo on http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=False, reloader=False)
+
+    if args.ssl:
+        certfile, keyfile = ensure_self_signed_cert()
+        print(f"Birdsong demo on https://{args.host}:{args.port}")
+        app.run(
+            host=args.host, port=args.port,
+            server=SSLServer, certfile=certfile, keyfile=keyfile,
+            debug=False, reloader=False,
+        )
+    else:
+        print(f"Birdsong demo on http://{args.host}:{args.port}")
+        app.run(host=args.host, port=args.port, debug=False, reloader=False)
 
 
 if __name__ == "__main__":
