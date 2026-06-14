@@ -5,7 +5,7 @@ implementation in `birdsong.py`.
 
 ![Spectrogram of a Birdsong transmission](modem_spectrogram.png)
 
-## Supported Core
+## Supported core
 
 `birdsong.py` is the supported entrypoint. It sends bytes from stdin, writes WAV
 output to a file or stdout, and decodes from microphone, file, or stdin.
@@ -37,7 +37,7 @@ just e2e
 just e2e-pipes
 ```
 
-## Demo App
+## Demo app
 
 There is a small Bottle-based demo app for quickly seeing the modem in action
 after cloning:
@@ -67,7 +67,7 @@ It gives you:
 The app is intentionally scrappy and file-backed. It uses the existing CLI path
 for encode/decode rather than introducing a new application layer.
 
-## Active Experiments
+## Active experiments
 
 These remain visible and smoke-tested, but they are research code rather than
 supported product surface:
@@ -77,7 +77,7 @@ supported product surface:
 
 ![Frequency sweep modulation spectrogram](hi_sweeps_spectrogram.png)
 
-## Archived History
+## Archived history
 
 Older or currently unsupported branches live in `experiments/archive/` and
 `archive/`. This includes the bitmap prototype, earlier sweep and multiband
@@ -97,7 +97,7 @@ Utilities that help inspect or audition signals live in `tools/`:
 - note playback
 - small debug helpers
 
-## Development Notes
+## Development notes
 
 - Preserve fade-in/fade-out windowing in tone generation to avoid audio clicks.
 - Favor deleting stale paths and unsupported claims over adding abstraction.
