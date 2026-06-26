@@ -12,6 +12,7 @@ __pycache__/**/*
 !modem_spectrogram.png
 !demo_app.png
 !hi_sweeps_spectrogram.png
+!assets/birdsong-logo.png
 out.wav 
 _wav/
 test_out/
