@@ -19,3 +19,6 @@ test_out/
 
 # Temp files
 workspace/
+
+# Local Claude Code settings (per-machine)
+.claude/settings.local.json
