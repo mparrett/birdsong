@@ -2,8 +2,6 @@
   <img src="assets/birdsong-logo.png" alt="Birdsong logo" width="400">
 </p>
 
-# Birdsong
-
 Acoustic modem experiments centered on a small, file-and-pipe-friendly FSK
 implementation in `birdsong.py`.
 
