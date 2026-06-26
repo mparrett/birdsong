@@ -104,3 +104,7 @@ Utilities that help inspect or audition signals live in `tools/`:
 - Preserve fade-in/fade-out windowing in tone generation to avoid audio clicks.
 - Favor deleting stale paths and unsupported claims over adding abstraction.
 - Project notes and migration planning live in `docs/project_notes/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
